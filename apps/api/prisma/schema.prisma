@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum CrosswordStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum EntryType {
+  GUESS_TITLE_FROM_AUDIO
+  GUESS_ARTIST_FROM_AUDIO
+  COMPLETE_LYRIC
+  TEXT_CLUE
+}
+
+enum Direction {
+  ACROSS
+  DOWN
+}
+
+model Crossword {
+  id          String          @id @default(uuid())
+  title       String
+  description String?         @db.Text
+  status      CrosswordStatus @default(DRAFT)
+  gridRows    Int             @default(15)
+  gridColumns Int             @default(15)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  publishedAt DateTime?
+  entries     CrosswordEntry[]
+
+  @@index([status, publishedAt])
+}
+
+model CrosswordEntry {
+  id               String    @id @default(uuid())
+  crosswordId      String
+  crossword        Crossword @relation(fields: [crosswordId], references: [id], onDelete: Cascade)
+  type             EntryType
+  answer           String
+  normalizedAnswer String
+  clueText         String?   @db.Text
+  audioPath        String?
+  audioStartTime   Float?
+  audioEndTime     Float?
+  songTitle        String?
+  artist           String?
+  spotifyUrl       String?
+  youtubeUrl       String?
+  direction        Direction
+  startRow         Int
+  startColumn      Int
+  orderNumber      Int
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([crosswordId, orderNumber])
+}

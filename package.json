@@ -1,0 +1,18 @@
+{
+  "name": "music-crossword",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "generate:admin-hash": "node -e \"const bcrypt=require('bcryptjs'); const p=process.argv[1]; if(!p){console.error('Usage: pnpm generate:admin-hash <password>'); process.exit(1)} bcrypt.hash(p,12).then(console.log)\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "bcryptjs": "^3.0.2",
+    "typescript": "^5.8.3"
+  }
+}
