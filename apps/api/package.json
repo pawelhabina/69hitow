@@ -10,7 +10,8 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
     "prisma:generate": "dotenv -e ../../.env -- prisma generate",
-    "prisma:migrate": "dotenv -e ../../.env -- prisma migrate dev"
+    "prisma:migrate": "dotenv -e ../../.env -- prisma migrate dev",
+    "prisma:migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy"
   },
   "dependencies": {
     "@music-crossword/shared": "workspace:*",

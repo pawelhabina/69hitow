@@ -35,16 +35,22 @@ Skopiuj konfigurację:
 cp .env.example .env
 ```
 
+Dla serwera `51.38.148.31` można zacząć od:
+
+```bash
+cp .env.production.example .env
+```
+
 Przykładowe wartości:
 
 ```env
 DATABASE_URL="mysql://user:password@localhost:3306/music_crossword"
-PORT=4000
+PORT=6969
 JWT_SECRET="dlugi-losowy-sekret"
 ADMIN_PASSWORD_HASH="$2b$12$..."
-PUBLIC_API_URL="http://localhost:4000"
-VITE_API_URL="http://localhost:4000"
-VITE_ADMIN_PANEL_URL="http://localhost:5174"
+PUBLIC_API_URL="http://51.38.148.31:6969"
+VITE_API_URL="http://51.38.148.31:6969"
+VITE_ADMIN_PANEL_URL="http://51.38.148.31:6970"
 ```
 
 ## Hasło administratora
@@ -69,6 +75,12 @@ Wykonaj migrację:
 
 ```bash
 pnpm --filter @music-crossword/api prisma:migrate
+```
+
+Na serwerze produkcyjnym użyj:
+
+```bash
+pnpm --filter @music-crossword/api prisma:migrate:deploy
 ```
 
 W razie potrzeby sam generator Prisma:
@@ -105,7 +117,7 @@ pnpm dev
 
 Domyślne adresy:
 
-- API: `http://localhost:4000`
+- API: `http://localhost:6969`
 - Admin: `http://localhost:5174`
 - Desktop renderer dev: `http://localhost:5173`
 
@@ -127,6 +139,20 @@ Przyszły build instalatora Windows:
 
 ```bash
 pnpm --filter @music-crossword/desktop dist:win
+```
+
+Build produkcyjny pod serwer `51.38.148.31`:
+
+```bash
+PUBLIC_API_URL="http://51.38.148.31:6969" pnpm --filter @music-crossword/api build
+VITE_API_URL="http://51.38.148.31:6969" pnpm --filter @music-crossword/admin build
+VITE_API_URL="http://51.38.148.31:6969" VITE_ADMIN_PANEL_URL="http://51.38.148.31:6970" pnpm --filter @music-crossword/desktop dist:win
+```
+
+Panel administratora po buildzie można wystawić jako statyczne pliki z `apps/admin/dist` albo uruchomić podgląd produkcyjny:
+
+```bash
+pnpm --filter @music-crossword/admin preview
 ```
 
 Konfiguracja `electron-builder` znajduje się w `apps/desktop/package.json`.

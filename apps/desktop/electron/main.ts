@@ -1,7 +1,7 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
 import { join } from "node:path";
 
-const ADMIN_PANEL_URL = import.meta.env.VITE_ADMIN_PANEL_URL ?? process.env.VITE_ADMIN_PANEL_URL ?? "http://localhost:5174";
+const ADMIN_PANEL_URL = import.meta.env.VITE_ADMIN_PANEL_URL ?? process.env.VITE_ADMIN_PANEL_URL ?? "http://localhost:6970";
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -11,6 +11,7 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: "#040817",
     title: "69hitow",
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, "../preload/preload.mjs"),
       contextIsolation: true,
@@ -36,7 +37,10 @@ ipcMain.handle("open-admin-panel", async () => {
   }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
+  createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

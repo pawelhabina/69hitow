@@ -20,11 +20,13 @@ jspm_packages/
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # Build output
 dist/
 out/
 release/
+production/
 apps/*/dist/
 apps/desktop/dist-electron/
 apps/desktop/release/
