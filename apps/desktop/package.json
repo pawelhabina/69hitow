@@ -10,7 +10,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
     "preview": "electron-vite preview",
-    "dist:win": "pnpm build && electron-builder --win nsis"
+    "dist:mac": "pnpm build && electron-builder --mac dmg zip --publish never",
+    "dist:win": "pnpm build && electron-builder --win nsis --x64 --publish never",
+    "dist:win:arm64": "pnpm build && electron-builder --win nsis --arm64 --publish never",
+    "dist:all": "pnpm build && electron-builder --mac dmg zip --win nsis --publish never"
   },
   "dependencies": {
     "@music-crossword/shared": "workspace:*",
@@ -43,6 +46,7 @@
   "build": {
     "appId": "pl.hitow69.desktop",
     "productName": "69hitow",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -50,6 +54,14 @@
       "dist/**",
       "out/**"
     ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.games",
+      "identity": null
+    },
     "win": {
       "target": "nsis"
     },
