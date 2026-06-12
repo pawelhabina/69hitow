@@ -35,7 +35,7 @@ Skopiuj konfigurację:
 cp .env.example .env
 ```
 
-Dla serwera `51.38.148.31` można zacząć od:
+Dla serwera z panelem pod `admin.hity.mionix.pl` można zacząć od:
 
 ```bash
 cp .env.production.example .env
@@ -48,9 +48,9 @@ DATABASE_URL="mysql://user:password@localhost:3306/music_crossword"
 PORT=6969
 JWT_SECRET="dlugi-losowy-sekret"
 ADMIN_PASSWORD_HASH="$2b$12$..."
-PUBLIC_API_URL="http://51.38.148.31:6969"
-VITE_API_URL="http://51.38.148.31:6969"
-VITE_ADMIN_PANEL_URL="http://51.38.148.31:6970"
+PUBLIC_API_URL="http://admin.hity.mionix.pl"
+VITE_API_URL="http://admin.hity.mionix.pl"
+VITE_ADMIN_PANEL_URL="http://admin.hity.mionix.pl"
 ```
 
 ## Hasło administratora
@@ -141,12 +141,12 @@ Przyszły build instalatora Windows:
 pnpm --filter @music-crossword/desktop dist:win
 ```
 
-Build produkcyjny pod serwer `51.38.148.31`:
+Build produkcyjny pod `admin.hity.mionix.pl`:
 
 ```bash
-PUBLIC_API_URL="http://51.38.148.31:6969" pnpm --filter @music-crossword/api build
-VITE_API_URL="http://51.38.148.31:6969" pnpm --filter @music-crossword/admin build
-VITE_API_URL="http://51.38.148.31:6969" VITE_ADMIN_PANEL_URL="http://51.38.148.31:6970" pnpm --filter @music-crossword/desktop dist:win
+PUBLIC_API_URL="http://admin.hity.mionix.pl" pnpm --filter @music-crossword/api build
+VITE_API_URL="http://admin.hity.mionix.pl" pnpm --filter @music-crossword/admin build
+VITE_API_URL="http://admin.hity.mionix.pl" VITE_ADMIN_PANEL_URL="http://admin.hity.mionix.pl" pnpm --filter @music-crossword/desktop dist:win
 ```
 
 Panel administratora po buildzie można wystawić jako statyczne pliki z `apps/admin/dist` albo uruchomić podgląd produkcyjny:
