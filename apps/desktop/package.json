@@ -10,7 +10,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
     "preview": "electron-vite preview",
-    "dist:mac": "pnpm build && electron-builder --mac dmg zip --publish never",
+    "dist:mac": "pnpm build && electron-builder --mac dmg zip --arm64 --x64 --publish never",
+    "dist:mac:arm64": "pnpm build && electron-builder --mac dmg zip --arm64 --publish never",
+    "dist:mac:x64": "pnpm build && electron-builder --mac dmg zip --x64 --publish never",
     "dist:win": "pnpm build && electron-builder --win nsis --x64 --publish never",
     "dist:win:arm64": "pnpm build && electron-builder --win nsis --arm64 --publish never",
     "dist:all": "pnpm build && electron-builder --mac dmg zip --win nsis --publish never"
