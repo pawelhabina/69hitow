@@ -78,6 +78,18 @@ function reveal(entry: {
   };
 }
 
+function sendAudioFile(res: Response, filename: string) {
+  return res.sendFile(path.join(audioUploadDir, filename), (error) => {
+    if (!error || res.headersSent) return;
+    if ("code" in error && error.code === "ENOENT") {
+      res.status(404).json({ message: "Plik audio nie istnieje na serwerze." });
+      return;
+    }
+    console.error(error);
+    res.status(500).json({ message: "Blad odczytu pliku audio." });
+  });
+}
+
 routes.get("/health", (_req, res) => {
   res.json({ ok: true, service: "music-crossword-api" });
 });
@@ -92,7 +104,7 @@ routes.get(
       select: { id: true }
     });
     if (!entry) return res.status(404).json({ message: "Plik audio nie jest publiczny." });
-    return res.sendFile(path.join(audioUploadDir, filename));
+    return sendAudioFile(res, filename);
   })
 );
 
@@ -245,7 +257,7 @@ routes.get(
     if (!verifyAdminToken(bearer ?? queryToken)) {
       return res.status(401).json({ message: "Brak autoryzacji." });
     }
-    return res.sendFile(path.join(audioUploadDir, routeParam(req, "filename")));
+    return sendAudioFile(res, routeParam(req, "filename"));
   })
 );
 
