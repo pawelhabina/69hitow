@@ -814,7 +814,7 @@ function EntryEditModal({
               </Field>
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <Field label="Kierunek">
                 <Select value={form.direction} onChange={(event) => onChange({ ...form, direction: event.target.value as Direction })}>
                   {DIRECTIONS.map((direction) => (
@@ -824,14 +824,17 @@ function EntryEditModal({
                   ))}
                 </Select>
               </Field>
+              <Field label="Dlugosc">
+                <Input value={normalizeAnswer(form.answer).length} readOnly className="text-slate-400" />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <Field label="Wiersz">
                 <Input type="number" min={0} value={form.startRow} onChange={(event) => onChange({ ...form, startRow: Number(event.target.value) })} />
               </Field>
               <Field label="Kolumna">
                 <Input type="number" min={0} value={form.startColumn} onChange={(event) => onChange({ ...form, startColumn: Number(event.target.value) })} />
-              </Field>
-              <Field label="Dlugosc">
-                <Input value={normalizeAnswer(form.answer).length} readOnly className="text-slate-400" />
               </Field>
             </div>
           </div>
@@ -862,7 +865,14 @@ function EntryEditModal({
                   />
                 </Field>
               </div>
-              <AudioSegmentPreview audioUrl={entry.audioUrl} file={audio} startValue={form.audioStartTime} endValue={form.audioEndTime} />
+              <AudioSegmentPreview
+                audioUrl={entry.audioUrl}
+                file={audio}
+                startValue={form.audioStartTime}
+                endValue={form.audioEndTime}
+                onStartChange={(value) => onChange({ ...form, audioStartTime: value })}
+                onEndChange={(value) => onChange({ ...form, audioEndTime: value })}
+              />
             </Card>
 
             <AnimatePresence>
@@ -899,16 +909,22 @@ function AudioSegmentPreview({
   audioUrl,
   file,
   startValue,
-  endValue
+  endValue,
+  onStartChange,
+  onEndChange
 }: {
   audioUrl: string | null;
   file: File | null;
   startValue: string;
   endValue: string;
+  onStartChange: (value: string) => void;
+  onEndChange: (value: string) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const source = fileUrl ?? (audioUrl ? withToken(audioUrl) : null);
   const start = parseTimeInput(startValue);
   const end = parseTimeInput(endValue);
@@ -941,7 +957,12 @@ function AudioSegmentPreview({
 
   useEffect(() => {
     setIsPlaying(false);
-    audioRef.current?.pause();
+    setCurrentTime(0);
+    setDuration(0);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
   }, [source]);
 
   const toggle = async () => {
@@ -952,9 +973,17 @@ function AudioSegmentPreview({
       setIsPlaying(false);
       return;
     }
-    audio.currentTime = safeStart;
+    const shouldResetToStart = audio.currentTime < safeStart || (safeEnd !== null && audio.currentTime >= safeEnd);
+    if (shouldResetToStart) audio.currentTime = safeStart;
     await audio.play();
     setIsPlaying(true);
+  };
+
+  const seek = (value: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = value;
+    setCurrentTime(value);
   };
 
   return (
@@ -964,23 +993,55 @@ function AudioSegmentPreview({
           ref={audioRef}
           src={source}
           preload="metadata"
+          onLoadedMetadata={(event) => {
+            const nextDuration = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0;
+            setDuration(nextDuration);
+            const initialTime = Math.min(safeStart, nextDuration || safeStart);
+            event.currentTarget.currentTime = initialTime;
+            setCurrentTime(initialTime);
+          }}
+          onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
           onPause={() => setIsPlaying(false)}
           onEnded={() => setIsPlaying(false)}
         >
           <track kind="captions" />
         </audio>
       ) : null}
-      <div className="flex items-center justify-between gap-3">
+      <div className="grid gap-2">
+        <div className="flex items-center justify-between gap-3 text-xs font-mono text-slate-300">
+          <span>{formatTimeInput(currentTime)}</span>
+          <span>{formatTimeInput(duration)}</span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={0.001}
+          value={Math.min(currentTime, duration || currentTime)}
+          disabled={!source || !duration}
+          onChange={(event) => seek(Number(event.target.value))}
+          className="h-2 w-full cursor-pointer accent-cyan disabled:cursor-not-allowed disabled:opacity-40"
+        />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-xs text-slate-400">
           <p>Podglad odcinka</p>
           <p className="font-mono text-slate-300">
             {formatTimeInput(safeStart)} - {formatTimeInput(safeEnd)}
           </p>
         </div>
-        <Button type="button" className="h-9" disabled={!source} onClick={toggle}>
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          {isPlaying ? "Pauza" : "Odtworz"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" className="h-9 bg-white/[0.06] px-3 text-xs text-slate-200" disabled={!source || !duration} onClick={() => onStartChange(formatTimeInput(currentTime))}>
+            Ustaw start
+          </Button>
+          <Button type="button" className="h-9 bg-white/[0.06] px-3 text-xs text-slate-200" disabled={!source || !duration} onClick={() => onEndChange(formatTimeInput(currentTime))}>
+            Ustaw koniec
+          </Button>
+          <Button type="button" className="h-9" disabled={!source} onClick={toggle}>
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {isPlaying ? "Pauza" : "Odtworz"}
+          </Button>
+        </div>
       </div>
       {!source ? <p className="text-xs text-slate-500">Ten wpis nie ma jeszcze pliku audio.</p> : null}
     </div>
