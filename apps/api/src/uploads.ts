@@ -8,6 +8,8 @@ export const audioUploadDir = path.join(uploadRoot, "audio");
 
 fs.mkdirSync(audioUploadDir, { recursive: true });
 
+export const maxAudioUploadBytes = 50 * 1024 * 1024;
+
 const storage = multer.diskStorage({
   destination: audioUploadDir,
   filename: (_req, file, cb) => {
@@ -21,7 +23,7 @@ const storage = multer.diskStorage({
 
 export const audioUpload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: maxAudioUploadBytes },
   fileFilter: (_req: Request, file, cb) => {
     if (file.mimetype !== "audio/mpeg") {
       cb(new Error("Dozwolone sa tylko pliki MP3 audio/mpeg."));

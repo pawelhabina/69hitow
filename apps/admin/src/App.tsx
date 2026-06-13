@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -8,11 +8,15 @@ import {
   LayoutDashboard,
   ListMusic,
   LogOut,
+  Pause,
+  Pencil,
+  Play,
   Plus,
   RefreshCw,
   Save,
   Trash2,
-  UploadCloud
+  UploadCloud,
+  X
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -258,8 +262,10 @@ function CrosswordCard({ crossword, active, onSelect }: { crossword: AdminListCr
 function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: () => void }) {
   const queryClient = useQueryClient();
   const [editingEntry, setEditingEntry] = useState<AdminEntry | null>(null);
-  const [form, setForm] = useState<EntryFormState>(blankEntry);
-  const [audio, setAudio] = useState<File | null>(null);
+  const [newForm, setNewForm] = useState<EntryFormState>(blankEntry);
+  const [newAudio, setNewAudio] = useState<File | null>(null);
+  const [editForm, setEditForm] = useState<EntryFormState>(blankEntry);
+  const [editAudio, setEditAudio] = useState<File | null>(null);
   const [showAnswers, setShowAnswers] = useState(true);
 
   const query = useQuery({
@@ -269,10 +275,10 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
 
   const crossword = query.data;
 
-  const placementErrors = useMemo(() => {
+  const getPlacementErrors = (entryForm: EntryFormState, entryAudio: File | null, entry?: AdminEntry | null) => {
     if (!crossword) return [];
     const errors = validateEntryPlacement(
-      form,
+      entryForm,
       crossword.entries.map((entry) => ({
         id: entry.id,
         normalizedAnswer: entry.normalizedAnswer,
@@ -282,18 +288,18 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
       })),
       crossword.gridRows,
       crossword.gridColumns,
-      editingEntry?.id
+      entry?.id
     );
-    if ((form.type === "TEXT_CLUE" || form.type === "COMPLETE_LYRIC") && !form.clueText.trim()) {
+    if ((entryForm.type === "TEXT_CLUE" || entryForm.type === "COMPLETE_LYRIC") && !entryForm.clueText.trim()) {
       errors.push("Ten typ wymaga tekstu podpowiedzi.");
     }
-    if ((form.type === "GUESS_TITLE_FROM_AUDIO" || form.type === "GUESS_ARTIST_FROM_AUDIO") && !audio && !editingEntry?.audioPath) {
+    if ((entryForm.type === "GUESS_TITLE_FROM_AUDIO" || entryForm.type === "GUESS_ARTIST_FROM_AUDIO") && !entryAudio && !entry?.audioPath) {
       errors.push("Ten typ wymaga pliku MP3.");
     }
-    const audioStartTime = parseTimeInput(form.audioStartTime);
-    const audioEndTime = parseTimeInput(form.audioEndTime);
+    const audioStartTime = parseTimeInput(entryForm.audioStartTime);
+    const audioEndTime = parseTimeInput(entryForm.audioEndTime);
     if (Number.isNaN(audioStartTime) || Number.isNaN(audioEndTime)) {
-      errors.push("Czas fragmentu audio wpisz jako sekundy albo mm:ss, np. 0:45.");
+      errors.push("Czas fragmentu audio wpisz jako sekundy albo mm:ss.SSS, np. 0:45.250.");
     }
     if (
       audioStartTime !== null &&
@@ -305,7 +311,13 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
       errors.push("Koniec fragmentu audio musi byc pozniej niz start.");
     }
     return errors;
-  }, [audio, crossword, editingEntry, form]);
+  };
+
+  const newPlacementErrors = useMemo(() => getPlacementErrors(newForm, newAudio), [crossword, newAudio, newForm]);
+  const editPlacementErrors = useMemo(
+    () => (editingEntry ? getPlacementErrors(editForm, editAudio, editingEntry) : []),
+    [crossword, editAudio, editForm, editingEntry]
+  );
 
   const layoutErrors = useMemo(() => {
     if (!crossword) return [];
@@ -324,26 +336,31 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
   });
 
   const entryMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ entry, entryForm, entryAudio }: { entry?: AdminEntry | null; entryForm: EntryFormState; entryAudio: File | null }) => {
       const data = new FormData();
-      Object.entries(form).forEach(([key, value]) => {
+      Object.entries(entryForm).forEach(([key, value]) => {
         if (key === "audioStartTime" || key === "audioEndTime") return;
         data.set(key, String(value ?? ""));
       });
-      const audioStartTime = parseTimeInput(form.audioStartTime);
-      const audioEndTime = parseTimeInput(form.audioEndTime);
+      const audioStartTime = parseTimeInput(entryForm.audioStartTime);
+      const audioEndTime = parseTimeInput(entryForm.audioEndTime);
       data.set("audioStartTime", audioStartTime === null || Number.isNaN(audioStartTime) ? "" : String(audioStartTime));
       data.set("audioEndTime", audioEndTime === null || Number.isNaN(audioEndTime) ? "" : String(audioEndTime));
-      if (audio) data.set("audio", audio);
-      const path = editingEntry
-        ? `/api/admin/crosswords/${crosswordId}/entries/${editingEntry.id}`
+      if (entryAudio) data.set("audio", entryAudio);
+      const path = entry
+        ? `/api/admin/crosswords/${crosswordId}/entries/${entry.id}`
         : `/api/admin/crosswords/${crosswordId}/entries`;
-      return apiRequest(path, { method: editingEntry ? "PUT" : "POST", body: data });
+      return apiRequest(path, { method: entry ? "PUT" : "POST", body: data });
     },
-    onSuccess: async () => {
-      setEditingEntry(null);
-      setForm(blankEntry);
-      setAudio(null);
+    onSuccess: async (_data, variables) => {
+      if (variables.entry) {
+        setEditingEntry(null);
+        setEditForm(blankEntry);
+        setEditAudio(null);
+      } else {
+        setNewForm(blankEntry);
+        setNewAudio(null);
+      }
       await queryClient.invalidateQueries({ queryKey: ["admin-crossword", crosswordId] });
       await queryClient.invalidateQueries({ queryKey: ["admin-crosswords"] });
       toast.success("Haslo zapisane.");
@@ -374,7 +391,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
     },
     onSuccess: async (_data, variables) => {
       if (editingEntry?.id === variables.entry.id) {
-        setForm((current) => ({ ...current, startRow: variables.startRow, startColumn: variables.startColumn }));
+        setEditForm((current) => ({ ...current, startRow: variables.startRow, startColumn: variables.startColumn }));
       }
       await queryClient.invalidateQueries({ queryKey: ["admin-crossword", crosswordId] });
       await queryClient.invalidateQueries({ queryKey: ["admin-crosswords"] });
@@ -405,7 +422,8 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
     mutationFn: (entryId: string) => apiRequest(`/api/admin/crosswords/${crosswordId}/entries/${entryId}`, { method: "DELETE" }),
     onSuccess: async () => {
       setEditingEntry(null);
-      setForm(blankEntry);
+      setEditForm(blankEntry);
+      setEditAudio(null);
       await queryClient.invalidateQueries({ queryKey: ["admin-crossword", crosswordId] });
       await queryClient.invalidateQueries({ queryKey: ["admin-crosswords"] });
       toast.success("Haslo usuniete.");
@@ -419,8 +437,8 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
 
   const startEditing = (entry: AdminEntry) => {
     setEditingEntry(entry);
-    setAudio(null);
-    setForm({
+    setEditAudio(null);
+    setEditForm({
       type: entry.type,
       answer: entry.answer,
       clueText: entry.clueText ?? "",
@@ -503,7 +521,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
             columns={crossword.gridColumns}
             entries={crossword.entries}
             activeEntryId={editingEntry?.id}
-            draft={form.answer ? form : null}
+            draft={newForm.answer ? newForm : null}
             showAnswers={showAnswers}
             onEntryClick={startEditing}
             onEntryMove={(entry, startRow, startColumn) => {
@@ -526,32 +544,21 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
         </Card>
 
         <Card className="grid max-h-[calc(100vh-260px)] content-start gap-4 overflow-auto">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold">{editingEntry ? "Edycja hasla" : "Nowe haslo"}</h3>
-            {editingEntry ? (
-              <Button
-                type="button"
-                className="h-8 bg-white/[0.06] text-xs text-slate-200"
-                onClick={() => { setEditingEntry(null); setForm(blankEntry); setAudio(null); }}
-              >
-                Anuluj
-              </Button>
-            ) : null}
-          </div>
+          <h3 className="text-lg font-bold">Nowe haslo</h3>
 
           <form
             className="grid gap-3"
             onSubmit={(event) => {
               event.preventDefault();
-              if (placementErrors.length) {
-                toast.error(placementErrors[0]);
+              if (newPlacementErrors.length) {
+                toast.error(newPlacementErrors[0]);
                 return;
               }
-              entryMutation.mutate();
+              entryMutation.mutate({ entryForm: newForm, entryAudio: newAudio });
             }}
           >
             <Field label="Typ hasla">
-              <Select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as EntryType })}>
+              <Select value={newForm.type} onChange={(event) => setNewForm({ ...newForm, type: event.target.value as EntryType })}>
                 {ENTRY_TYPES.map((type) => (
                   <option key={type} value={type}>
                     {entryTypeLabel(type)}
@@ -559,52 +566,47 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
                 ))}
               </Select>
             </Field>
-            <Field label="Odpowiedz" hint={`Normalizacja: ${normalizeAnswer(form.answer) || "-"}`}>
-              <Input value={form.answer} onChange={(event) => setForm({ ...form, answer: event.target.value })} />
+            <Field label="Odpowiedz" hint={`Normalizacja: ${normalizeAnswer(newForm.answer) || "-"}`}>
+              <Input value={newForm.answer} onChange={(event) => setNewForm({ ...newForm, answer: event.target.value })} />
             </Field>
             <Field label="Podpowiedz tekstowa">
-              <Textarea value={form.clueText} onChange={(event) => setForm({ ...form, clueText: event.target.value })} />
+              <Textarea value={newForm.clueText} onChange={(event) => setNewForm({ ...newForm, clueText: event.target.value })} />
             </Field>
             <Field label="Plik MP3">
-              <Input type="file" accept="audio/mpeg" onChange={(event) => setAudio(event.target.files?.[0] ?? null)} />
+              <Input type="file" accept="audio/mpeg" onChange={(event) => setNewAudio(event.target.files?.[0] ?? null)} />
             </Field>
-            {editingEntry?.audioUrl ? (
-              <audio controls src={withToken(editingEntry.audioUrl)} className="w-full">
-                <track kind="captions" />
-              </audio>
-            ) : null}
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Start fragmentu" hint="Np. 0:45">
+              <Field label="Start fragmentu" hint="Np. 0:45.250">
                 <Input
-                  value={form.audioStartTime}
-                  placeholder="0:45"
-                  onChange={(event) => setForm({ ...form, audioStartTime: event.target.value })}
+                  value={newForm.audioStartTime}
+                  placeholder="0:45.250"
+                  onChange={(event) => setNewForm({ ...newForm, audioStartTime: event.target.value })}
                 />
               </Field>
-              <Field label="Koniec fragmentu" hint="Np. 1:02">
+              <Field label="Koniec fragmentu" hint="Np. 1:02.750">
                 <Input
-                  value={form.audioEndTime}
-                  placeholder="1:02"
-                  onChange={(event) => setForm({ ...form, audioEndTime: event.target.value })}
+                  value={newForm.audioEndTime}
+                  placeholder="1:02.750"
+                  onChange={(event) => setNewForm({ ...newForm, audioEndTime: event.target.value })}
                 />
               </Field>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Tytul utworu">
-                <Input value={form.songTitle} onChange={(event) => setForm({ ...form, songTitle: event.target.value })} />
+                <Input value={newForm.songTitle} onChange={(event) => setNewForm({ ...newForm, songTitle: event.target.value })} />
               </Field>
               <Field label="Wykonawca">
-                <Input value={form.artist} onChange={(event) => setForm({ ...form, artist: event.target.value })} />
+                <Input value={newForm.artist} onChange={(event) => setNewForm({ ...newForm, artist: event.target.value })} />
               </Field>
               <Field label="Spotify URL">
-                <Input value={form.spotifyUrl} onChange={(event) => setForm({ ...form, spotifyUrl: event.target.value })} />
+                <Input value={newForm.spotifyUrl} onChange={(event) => setNewForm({ ...newForm, spotifyUrl: event.target.value })} />
               </Field>
               <Field label="YouTube URL">
-                <Input value={form.youtubeUrl} onChange={(event) => setForm({ ...form, youtubeUrl: event.target.value })} />
+                <Input value={newForm.youtubeUrl} onChange={(event) => setNewForm({ ...newForm, youtubeUrl: event.target.value })} />
               </Field>
               <Field label="Kierunek">
-                <Select value={form.direction} onChange={(event) => setForm({ ...form, direction: event.target.value as Direction })}>
+                <Select value={newForm.direction} onChange={(event) => setNewForm({ ...newForm, direction: event.target.value as Direction })}>
                   {DIRECTIONS.map((direction) => (
                     <option key={direction} value={direction}>
                       {direction === "ACROSS" ? "Poziomo" : "Pionowo"}
@@ -613,13 +615,13 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
                 </Select>
               </Field>
               <Field label="Numer">
-                <Input type="number" min={1} value={form.orderNumber} onChange={(event) => setForm({ ...form, orderNumber: Number(event.target.value) })} />
+                <Input type="number" min={1} value={newForm.orderNumber} onChange={(event) => setNewForm({ ...newForm, orderNumber: Number(event.target.value) })} />
               </Field>
               <Field label="Wiersz startowy">
-                <Input type="number" min={0} value={form.startRow} onChange={(event) => setForm({ ...form, startRow: Number(event.target.value) })} />
+                <Input type="number" min={0} value={newForm.startRow} onChange={(event) => setNewForm({ ...newForm, startRow: Number(event.target.value) })} />
               </Field>
               <Field label="Kolumna startowa">
-                <Input type="number" min={0} value={form.startColumn} onChange={(event) => setForm({ ...form, startColumn: Number(event.target.value) })} />
+                <Input type="number" min={0} value={newForm.startColumn} onChange={(event) => setNewForm({ ...newForm, startColumn: Number(event.target.value) })} />
               </Field>
             </div>
 
@@ -633,9 +635,9 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
                   {layoutErrors.length > 4 ? <p>...i jeszcze {layoutErrors.length - 4}.</p> : null}
                 </motion.div>
               ) : null}
-              {placementErrors.length ? (
+              {newPlacementErrors.length ? (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="rounded-md border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
-                  {placementErrors.map((error) => (
+                  {newPlacementErrors.map((error) => (
                     <p key={error}>{error}</p>
                   ))}
                 </motion.div>
@@ -643,17 +645,9 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
             </AnimatePresence>
 
             <div className="flex gap-2">
-              <Button type="submit" disabled={entryMutation.isPending || Boolean(placementErrors.length)} className="flex-1">
+              <Button type="submit" disabled={entryMutation.isPending || Boolean(newPlacementErrors.length)} className="flex-1">
                 <Save className="h-4 w-4" /> Zapisz haslo
               </Button>
-              {editingEntry ? (
-                <DangerButton
-                  type="button"
-                  onClick={() => window.confirm("Usunac haslo?") && deleteEntryMutation.mutate(editingEntry.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </DangerButton>
-              ) : null}
             </div>
           </form>
 
@@ -662,11 +656,10 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
               <ListMusic className="h-4 w-4" /> Hasla
             </h3>
             {crossword.entries.map((entry) => (
-              <button
+              <div
                 key={entry.id}
-                onClick={() => startEditing(entry)}
                 className={cn(
-                  "rounded-md border border-white/10 bg-white/[0.04] p-3 text-left text-sm transition hover:border-cyan/50",
+                  "rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm transition",
                   editingEntry?.id === entry.id && "border-cyan/60 bg-cyan/10"
                 )}
               >
@@ -684,11 +677,312 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
                 <p className="mt-1 text-xs text-slate-500">
                   {entry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} · {entryTypeLabel(entry.type)}
                 </p>
-              </button>
+                <Button type="button" className="mt-3 h-8 w-full bg-white/[0.06] text-xs text-slate-200" onClick={() => startEditing(entry)}>
+                  <Pencil className="h-3.5 w-3.5" /> Edytuj
+                </Button>
+              </div>
             ))}
           </div>
         </Card>
       </div>
+      <AnimatePresence>
+        {editingEntry ? (
+          <EntryEditModal
+            entry={editingEntry}
+            form={editForm}
+            audio={editAudio}
+            errors={editPlacementErrors}
+            isSaving={entryMutation.isPending}
+            isDeleting={deleteEntryMutation.isPending}
+            onChange={setEditForm}
+            onAudioChange={setEditAudio}
+            onClose={() => {
+              setEditingEntry(null);
+              setEditForm(blankEntry);
+              setEditAudio(null);
+            }}
+            onSave={() => {
+              if (editPlacementErrors.length) {
+                toast.error(editPlacementErrors[0]);
+                return;
+              }
+              entryMutation.mutate({ entry: editingEntry, entryForm: editForm, entryAudio: editAudio });
+            }}
+            onDelete={() => window.confirm("Usunac haslo?") && deleteEntryMutation.mutate(editingEntry.id)}
+          />
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function EntryEditModal({
+  entry,
+  form,
+  audio,
+  errors,
+  isSaving,
+  isDeleting,
+  onChange,
+  onAudioChange,
+  onClose,
+  onSave,
+  onDelete
+}: {
+  entry: AdminEntry;
+  form: EntryFormState;
+  audio: File | null;
+  errors: string[];
+  isSaving: boolean;
+  isDeleting: boolean;
+  onChange: (form: EntryFormState) => void;
+  onAudioChange: (audio: File | null) => void;
+  onClose: () => void;
+  onSave: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <motion.form
+        className="glass grid max-h-[92vh] w-full max-w-5xl gap-5 overflow-auto rounded-xl border border-cyan/20 p-6 shadow-glow"
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 18, scale: 0.98 }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSave();
+        }}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan">Edycja odpowiedzi</p>
+            <h3 className="mt-1 text-2xl font-bold">{entry.orderNumber}. {entry.answer}</h3>
+            <p className="mt-1 text-sm text-slate-400">
+              {entry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} · {entryTypeLabel(entry.type)}
+            </p>
+          </div>
+          <Button type="button" className="h-9 w-9 bg-white/[0.06] px-0 text-slate-200" onClick={onClose} aria-label="Zamknij modal">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-[1.1fr_0.9fr] gap-5">
+          <div className="grid gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Typ hasla">
+                <Select value={form.type} onChange={(event) => onChange({ ...form, type: event.target.value as EntryType })}>
+                  {ENTRY_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {entryTypeLabel(type)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Numer">
+                <Input type="number" min={1} value={form.orderNumber} onChange={(event) => onChange({ ...form, orderNumber: Number(event.target.value) })} />
+              </Field>
+            </div>
+
+            <Field label="Odpowiedz" hint={`Normalizacja: ${normalizeAnswer(form.answer) || "-"}`}>
+              <Input value={form.answer} onChange={(event) => onChange({ ...form, answer: event.target.value })} />
+            </Field>
+
+            <Field label="Podpowiedz tekstowa">
+              <Textarea value={form.clueText} onChange={(event) => onChange({ ...form, clueText: event.target.value })} />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Tytul utworu">
+                <Input value={form.songTitle} onChange={(event) => onChange({ ...form, songTitle: event.target.value })} />
+              </Field>
+              <Field label="Wykonawca">
+                <Input value={form.artist} onChange={(event) => onChange({ ...form, artist: event.target.value })} />
+              </Field>
+              <Field label="Spotify URL">
+                <Input value={form.spotifyUrl} onChange={(event) => onChange({ ...form, spotifyUrl: event.target.value })} />
+              </Field>
+              <Field label="YouTube URL">
+                <Input value={form.youtubeUrl} onChange={(event) => onChange({ ...form, youtubeUrl: event.target.value })} />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-4 gap-3">
+              <Field label="Kierunek">
+                <Select value={form.direction} onChange={(event) => onChange({ ...form, direction: event.target.value as Direction })}>
+                  {DIRECTIONS.map((direction) => (
+                    <option key={direction} value={direction}>
+                      {direction === "ACROSS" ? "Poziomo" : "Pionowo"}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Wiersz">
+                <Input type="number" min={0} value={form.startRow} onChange={(event) => onChange({ ...form, startRow: Number(event.target.value) })} />
+              </Field>
+              <Field label="Kolumna">
+                <Input type="number" min={0} value={form.startColumn} onChange={(event) => onChange({ ...form, startColumn: Number(event.target.value) })} />
+              </Field>
+              <Field label="Dlugosc">
+                <Input value={normalizeAnswer(form.answer).length} readOnly className="text-slate-400" />
+              </Field>
+            </div>
+          </div>
+
+          <div className="grid content-start gap-4">
+            <Card className="grid gap-3 bg-white/[0.04]">
+              <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
+                <FileAudio className="h-4 w-4 text-cyan" /> Fragment audio
+              </div>
+              <Field label="Zastap plik MP3">
+                <Input type="file" accept="audio/mpeg" onChange={(event) => onAudioChange(event.target.files?.[0] ?? null)} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Start" hint="mm:ss.SSS, np. 0:45.250">
+                  <Input
+                    value={form.audioStartTime}
+                    placeholder="0:45.250"
+                    inputMode="decimal"
+                    onChange={(event) => onChange({ ...form, audioStartTime: event.target.value })}
+                  />
+                </Field>
+                <Field label="Koniec" hint="mm:ss.SSS, np. 1:02.750">
+                  <Input
+                    value={form.audioEndTime}
+                    placeholder="1:02.750"
+                    inputMode="decimal"
+                    onChange={(event) => onChange({ ...form, audioEndTime: event.target.value })}
+                  />
+                </Field>
+              </div>
+              <AudioSegmentPreview audioUrl={entry.audioUrl} file={audio} startValue={form.audioStartTime} endValue={form.audioEndTime} />
+            </Card>
+
+            <AnimatePresence>
+              {errors.length ? (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="rounded-md border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
+                  {errors.map((error) => (
+                    <p key={error}>{error}</p>
+                  ))}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        <div className="flex justify-between gap-3 border-t border-white/10 pt-4">
+          <DangerButton type="button" onClick={onDelete} disabled={isDeleting}>
+            <Trash2 className="h-4 w-4" /> Usun haslo
+          </DangerButton>
+          <div className="flex gap-2">
+            <Button type="button" className="bg-white/[0.06] text-slate-200" onClick={onClose}>
+              Anuluj
+            </Button>
+            <Button type="submit" disabled={isSaving || Boolean(errors.length)}>
+              <Save className="h-4 w-4" /> Zapisz zmiany
+            </Button>
+          </div>
+        </div>
+      </motion.form>
+    </motion.div>
+  );
+}
+
+function AudioSegmentPreview({
+  audioUrl,
+  file,
+  startValue,
+  endValue
+}: {
+  audioUrl: string | null;
+  file: File | null;
+  startValue: string;
+  endValue: string;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const source = fileUrl ?? (audioUrl ? withToken(audioUrl) : null);
+  const start = parseTimeInput(startValue);
+  const end = parseTimeInput(endValue);
+  const safeStart = start !== null && !Number.isNaN(start) ? start : 0;
+  const safeEnd = end !== null && !Number.isNaN(end) ? end : null;
+
+  useEffect(() => {
+    if (!file) {
+      setFileUrl(null);
+      return undefined;
+    }
+    const nextUrl = URL.createObjectURL(file);
+    setFileUrl(nextUrl);
+    return () => URL.revokeObjectURL(nextUrl);
+  }, [file]);
+
+  useEffect(() => {
+    if (!isPlaying) return undefined;
+    const timer = window.setInterval(() => {
+      const audio = audioRef.current;
+      if (!audio || safeEnd === null) return;
+      if (audio.currentTime >= safeEnd) {
+        audio.pause();
+        audio.currentTime = safeEnd;
+        setIsPlaying(false);
+      }
+    }, 40);
+    return () => window.clearInterval(timer);
+  }, [isPlaying, safeEnd]);
+
+  useEffect(() => {
+    setIsPlaying(false);
+    audioRef.current?.pause();
+  }, [source]);
+
+  const toggle = async () => {
+    const audio = audioRef.current;
+    if (!audio || !source) return;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+      return;
+    }
+    audio.currentTime = safeStart;
+    await audio.play();
+    setIsPlaying(true);
+  };
+
+  return (
+    <div className="grid gap-3 rounded-lg border border-white/10 bg-black/20 p-3">
+      {source ? (
+        <audio
+          ref={audioRef}
+          src={source}
+          preload="metadata"
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => setIsPlaying(false)}
+        >
+          <track kind="captions" />
+        </audio>
+      ) : null}
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs text-slate-400">
+          <p>Podglad odcinka</p>
+          <p className="font-mono text-slate-300">
+            {formatTimeInput(safeStart)} - {formatTimeInput(safeEnd)}
+          </p>
+        </div>
+        <Button type="button" className="h-9" disabled={!source} onClick={toggle}>
+          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          {isPlaying ? "Pauza" : "Odtworz"}
+        </Button>
+      </div>
+      {!source ? <p className="text-xs text-slate-500">Ten wpis nie ma jeszcze pliku audio.</p> : null}
     </div>
   );
 }
@@ -727,5 +1021,6 @@ function formatTimeInput(value: number | null | undefined) {
   const whole = Math.floor(value);
   const minutes = Math.floor(whole / 60);
   const seconds = String(whole % 60).padStart(2, "0");
-  return `${minutes}:${seconds}`;
+  const milliseconds = Math.round((value - whole) * 1000);
+  return milliseconds > 0 ? `${minutes}:${seconds}.${String(milliseconds).padStart(3, "0")}` : `${minutes}:${seconds}`;
 }
