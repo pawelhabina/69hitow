@@ -921,6 +921,7 @@ function AudioSegmentPreview({
   onEndChange: (value: string) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const frameRef = useRef<number | null>(null);
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -942,17 +943,40 @@ function AudioSegmentPreview({
   }, [file]);
 
   useEffect(() => {
-    if (!isPlaying) return undefined;
-    const timer = window.setInterval(() => {
+    return () => {
+      if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const stopFrame = () => {
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+    if (!isPlaying) {
+      stopFrame();
+      return undefined;
+    }
+
+    const update = () => {
       const audio = audioRef.current;
-      if (!audio || safeEnd === null) return;
-      if (audio.currentTime >= safeEnd) {
+      if (!audio) return;
+      if (safeEnd !== null && audio.currentTime >= safeEnd) {
         audio.pause();
         audio.currentTime = safeEnd;
+        setCurrentTime(safeEnd);
         setIsPlaying(false);
+        frameRef.current = null;
+        return;
       }
-    }, 40);
-    return () => window.clearInterval(timer);
+      setCurrentTime(audio.currentTime);
+      frameRef.current = window.requestAnimationFrame(update);
+    };
+
+    frameRef.current = window.requestAnimationFrame(update);
+    return stopFrame;
   }, [isPlaying, safeEnd]);
 
   useEffect(() => {
