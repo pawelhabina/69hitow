@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -33,6 +33,13 @@ import { AudioPlayer } from "@/components/AudioPlayer";
 import { Button, Glass } from "@/components/Button";
 import { GameBoard } from "@/components/GameBoard";
 import { apiRequest } from "@/lib/api";
+import {
+  buildCellLetters,
+  buildEntryCellMap,
+  clearCrossingCell,
+  getEntryLetters,
+  writeCrossingCell
+} from "@/lib/crosswordInput";
 import { cn } from "@/lib/utils";
 import { useProgressStore } from "@/store/progress";
 
@@ -208,7 +215,7 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
   });
   const storedProgress = useProgressStore((state) => state.progress[crosswordId]);
   const progress = storedProgress ?? EMPTY_GAME_PROGRESS;
-  const setGuess = useProgressStore((state) => state.setGuess);
+  const setGuesses = useProgressStore((state) => state.setGuesses);
   const markSolved = useProgressStore((state) => state.markSolved);
   const markGivenUp = useProgressStore((state) => state.markGivenUp);
   const markCompleted = useProgressStore((state) => state.markCompleted);
@@ -233,6 +240,47 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
   const activeEntry = useMemo(
     () => crossword?.entries.find((entry) => entry.id === activeId) ?? crossword?.entries[0],
     [activeId, crossword?.entries]
+  );
+  const entries = useMemo(() => crossword?.entries ?? [], [crossword?.entries]);
+  const entryCellsByKey = useMemo(() => buildEntryCellMap(entries), [entries]);
+  const cellLetters = useMemo(() => buildCellLetters(entries, progress), [entries, progress]);
+
+  const clearFeedbackForEntries = useCallback((entryIds: string[]) => {
+    setFeedback((currentFeedback) => {
+      const nextFeedback = { ...currentFeedback };
+      entryIds.forEach((entryId) => {
+        delete nextFeedback[entryId];
+      });
+      return nextFeedback;
+    });
+  }, []);
+
+  const writeLetterAtCell = useCallback(
+    (entry: PublicEntry, index: number, letter: string) => {
+      const result = writeCrossingCell({ entry, index, letter, progress, entryCellsByKey });
+      if (result.blocked) {
+        toast.error(`Ta kratka jest juz ustalona jako ${result.lockedLetter}.`);
+        return false;
+      }
+      clearFeedbackForEntries(result.affectedEntryIds);
+      setGuesses(crosswordId, result.guesses);
+      return true;
+    },
+    [clearFeedbackForEntries, crosswordId, entryCellsByKey, progress, setGuesses]
+  );
+
+  const clearLetterAtCell = useCallback(
+    (entry: PublicEntry, index: number) => {
+      const result = clearCrossingCell({ entry, index, progress, entryCellsByKey });
+      if (result.blocked) {
+        toast.info(`Ta kratka jest juz ustalona jako ${result.lockedLetter}.`);
+        return false;
+      }
+      clearFeedbackForEntries(result.affectedEntryIds);
+      setGuesses(crosswordId, result.guesses);
+      return true;
+    },
+    [clearFeedbackForEntries, crosswordId, entryCellsByKey, progress, setGuesses]
   );
 
   const checkBoardMutation = useMutation({
@@ -338,32 +386,32 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
 
       if (event.key === "Backspace") {
         event.preventDefault();
-        const current = normalizeAnswer(progress.guesses[activeEntry.id] ?? "");
-        const removeIndex = Math.max(0, Math.min(activeCellIndex - 1, current.length - 1));
-        const next = current.slice(0, removeIndex) + current.slice(removeIndex + 1);
-        setFeedback((currentFeedback) => {
-          const { [activeEntry.id]: _removed, ...rest } = currentFeedback;
-          return rest;
-        });
-        setGuess(crosswordId, activeEntry.id, next);
+        const letters = getEntryLetters(activeEntry, progress);
+        const removeIndex = letters[activeCellIndex] || activeCellIndex === 0 ? activeCellIndex : activeCellIndex - 1;
+        clearLetterAtCell(activeEntry, removeIndex);
         setActiveCellIndex(removeIndex);
         return;
       }
 
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setActiveCellIndex((index) => Math.max(0, index - 1));
+        return;
+      }
+
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setActiveCellIndex((index) => Math.min(index + 1, activeEntry.length - 1));
+        return;
+      }
+
       if (event.key.length !== 1) return;
-      const letter = normalizeAnswer(event.key);
-      if (!letter) return;
+      if (!normalizeAnswer(event.key)) return;
+      const letter = event.key;
       event.preventDefault();
-      const current = normalizeAnswer(progress.guesses[activeEntry.id] ?? "");
-      const letters = [...current.padEnd(activeCellIndex, "")];
-      letters[activeCellIndex] = letter[0];
-      const next = letters.join("").slice(0, activeEntry.length);
-      setFeedback((currentFeedback) => {
-        const { [activeEntry.id]: _removed, ...rest } = currentFeedback;
-        return rest;
-      });
-      setGuess(crosswordId, activeEntry.id, next);
-      setActiveCellIndex((index) => Math.min(index + 1, activeEntry.length - 1));
+      if (writeLetterAtCell(activeEntry, activeCellIndex, letter)) {
+        setActiveCellIndex((index) => Math.min(index + 1, activeEntry.length - 1));
+      }
     };
 
     window.addEventListener("keydown", handleTyping);
@@ -372,11 +420,11 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
     activeEntry,
     activeCellIndex,
     checkBoardMutation,
-    crosswordId,
+    clearLetterAtCell,
     currentReveal,
-    progress.guesses,
-    setGuess,
-    showCompletionOverlay
+    progress,
+    showCompletionOverlay,
+    writeLetterAtCell
   ]);
 
   if (query.isLoading || !crossword || !activeEntry) {
@@ -452,6 +500,7 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
                 activeEntryId={activeEntry.id}
                 progress={progress}
                 feedback={feedback}
+                cellLetters={cellLetters}
                 activeCellIndex={activeCellIndex}
                 onSelect={(entry, cellIndex) => selectEntry(entry, cellIndex)}
               />

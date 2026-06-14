@@ -79,6 +79,22 @@ function reveal(entry: {
   };
 }
 
+function guessLetterSlots(value: string, length: number) {
+  const slots = Array<string>(length).fill("");
+  const chars = [...value];
+  const hasSlotMarkers = chars.some((char) => char === " ");
+  if (hasSlotMarkers || chars.length >= length) {
+    chars.slice(0, length).forEach((char, index) => {
+      slots[index] = normalizeAnswer(char)[0] ?? "";
+    });
+    return slots;
+  }
+  [...normalizeAnswer(value)].slice(0, length).forEach((letter, index) => {
+    slots[index] = letter;
+  });
+  return slots;
+}
+
 async function createGameResult(input: {
   crosswordId: string;
   playerId: string;
@@ -215,14 +231,13 @@ routes.post(
     if (!crossword) return res.status(404).json({ message: "Nie znaleziono krzyzowki." });
 
     const entries = crossword.entries.map((entry) => {
-      const guess = normalizeAnswer(guesses[entry.id] ?? "");
       const answerLetters = [...entry.normalizedAnswer];
-      const guessLetters = [...guess];
+      const guessLetters = guessLetterSlots(guesses[entry.id] ?? "", answerLetters.length);
       const letters = answerLetters.map((letter, index) => {
         if (!guessLetters[index]) return "missing";
         return guessLetters[index] === letter ? "correct" : "incorrect";
       });
-      const correct = guess === entry.normalizedAnswer;
+      const correct = answerLetters.every((letter, index) => guessLetters[index] === letter);
       return {
         id: entry.id,
         correct,

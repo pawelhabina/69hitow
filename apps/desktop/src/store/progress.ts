@@ -15,6 +15,7 @@ interface ProgressState {
   progress: Record<string, CrosswordProgress>;
   markSeen: (id: string) => void;
   setGuess: (crosswordId: string, entryId: string, guess: string) => void;
+  setGuesses: (crosswordId: string, guesses: Record<string, string>) => void;
   markSolved: (crosswordId: string, entryId: string, reveal: RevealedEntry) => void;
   markGivenUp: (crosswordId: string, entryId: string, reveal: RevealedEntry) => void;
   markCompleted: (crosswordId: string) => void;
@@ -39,6 +40,16 @@ export const useProgressStore = create<ProgressState>()(
             progress: {
               ...state.progress,
               [crosswordId]: { ...current, guesses: { ...current.guesses, [entryId]: guess } }
+            }
+          };
+        }),
+      setGuesses: (crosswordId, guesses) =>
+        set((state) => {
+          const current = state.progress[crosswordId] ?? emptyProgress();
+          return {
+            progress: {
+              ...state.progress,
+              [crosswordId]: { ...current, guesses: { ...current.guesses, ...guesses } }
             }
           };
         }),

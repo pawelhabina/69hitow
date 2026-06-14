@@ -1,5 +1,4 @@
 import {
-  normalizeAnswer,
   type Direction,
   type LetterCheckStatus,
   type PublicCrossword,
@@ -17,30 +16,27 @@ interface Props {
     guesses: Record<string, string>;
   };
   feedback: Record<string, LetterCheckStatus[]>;
+  cellLetters: Record<string, string>;
   activeCellIndex: number;
   onSelect: (entry: PublicEntry, cellIndex: number, directionHint?: Direction) => void;
 }
 
-export function GameBoard({ crossword, activeEntryId, progress, feedback, activeCellIndex, onSelect }: Props) {
+export function GameBoard({ crossword, activeEntryId, progress, feedback, cellLetters, activeCellIndex, onSelect }: Props) {
   const cells = new Map<
     string,
     {
       entries: Array<{ entry: PublicEntry; index: number }>;
-      letters: Array<{ entryId: string; letter: string }>;
       statuses: Array<{ entryId: string; status: LetterCheckStatus }>;
     }
   >();
 
   crossword.entries.forEach((entry) => {
-    const reveal = progress.solvedEntries[entry.id] ?? progress.givenUpEntries[entry.id];
-    const letters = reveal ? [...normalizeAnswer(reveal.revealedAnswer)] : [...normalizeAnswer(progress.guesses[entry.id] ?? "")];
     Array.from({ length: entry.length }).forEach((_, index) => {
       const row = entry.startRow + (entry.direction === "DOWN" ? index : 0);
       const column = entry.startColumn + (entry.direction === "ACROSS" ? index : 0);
       const key = `${row}:${column}`;
-      const current = cells.get(key) ?? { entries: [], letters: [], statuses: [] };
+      const current = cells.get(key) ?? { entries: [], statuses: [] };
       current.entries.push({ entry, index });
-      if (letters[index]) current.letters.push({ entryId: entry.id, letter: letters[index] });
       const status = feedback[entry.id]?.[index];
       if (status) current.statuses.push({ entryId: entry.id, status });
       cells.set(key, current);
@@ -57,14 +53,15 @@ export function GameBoard({ crossword, activeEntryId, progress, feedback, active
         const activeCell = cell?.entries.some(({ entry, index: entryIndex }) => entry.id === activeEntryId && entryIndex === activeCellIndex);
         const solved = cell?.entries.some(({ entry }) => progress.solvedEntries[entry.id]);
         const givenUp = cell?.entries.some(({ entry }) => progress.givenUpEntries[entry.id]);
-        const activeLetter = cell?.letters.find((item) => item.entryId === activeEntryId)?.letter;
-        const letter = activeLetter ?? cell?.letters[0]?.letter ?? "";
+        const letter = cellLetters[`${row}:${column}`] ?? "";
         const activeStatus = cell?.statuses.find((item) => item.entryId === activeEntryId)?.status;
         const status = activeStatus ?? cell?.statuses.find((item) => item.status !== "correct")?.status ?? cell?.statuses[0]?.status;
         return (
           <button
             key={`${row}:${column}`}
             type="button"
+            data-cell-key={`${row}:${column}`}
+            aria-label={cell ? `Kratka ${row + 1}, ${column + 1}${letter ? `, ${letter}` : ""}` : `Puste pole ${row + 1}, ${column + 1}`}
             disabled={!cell}
             onClick={() => {
               if (!cell) return;
