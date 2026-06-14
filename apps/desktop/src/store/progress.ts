@@ -10,6 +10,7 @@ export interface CrosswordProgress {
 }
 
 interface ProgressState {
+  playerId: string;
   seenCrosswords: Record<string, boolean>;
   progress: Record<string, CrosswordProgress>;
   markSeen: (id: string) => void;
@@ -27,6 +28,7 @@ function emptyProgress(): CrosswordProgress {
 export const useProgressStore = create<ProgressState>()(
   persist(
     (set) => ({
+      playerId: crypto.randomUUID(),
       seenCrosswords: {},
       progress: {},
       markSeen: (id) => set((state) => ({ seenCrosswords: { ...state.seenCrosswords, [id]: true } })),

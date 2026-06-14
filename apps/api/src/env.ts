@@ -7,7 +7,10 @@ export const env = {
   port: Number(process.env.PORT ?? 6969),
   jwtSecret: process.env.JWT_SECRET ?? "",
   adminPasswordHash: process.env.ADMIN_PASSWORD_HASH ?? "",
-  publicApiUrl: process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 6969}`
+  publicApiUrl: process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 6969}`,
+  desktopAppVersion: process.env.DESKTOP_APP_VERSION ?? "0.2.0",
+  desktopDownloadUrl: process.env.DESKTOP_DOWNLOAD_URL ?? "",
+  desktopReleaseNotes: process.env.DESKTOP_RELEASE_NOTES ?? ""
 };
 
 export function assertRuntimeEnv() {

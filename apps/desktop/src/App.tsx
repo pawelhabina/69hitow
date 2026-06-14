@@ -4,12 +4,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   CheckCircle2,
+  Download,
   ExternalLink,
+  Eye,
+  EyeOff,
   Headphones,
   Loader2,
   Music2,
-  Pause,
-  Play,
   RefreshCw,
   Trophy,
   XCircle
@@ -21,6 +22,9 @@ import {
   type PublicEntry,
   type RevealedEntry,
   type BoardCheckResult,
+  type AppVersionInfo,
+  type CrosswordGiveUpResult,
+  type GameResultSummary,
   type LetterCheckStatus,
   entryTypeLabel,
   normalizeAnswer
@@ -33,6 +37,20 @@ import { cn } from "@/lib/utils";
 import { useProgressStore } from "@/store/progress";
 
 const EMPTY_GAME_PROGRESS = { solvedEntries: {}, givenUpEntries: {}, guesses: {}, completed: false };
+const APP_VERSION = "0.2.0";
+
+function isNewerVersion(latest: string, current: string) {
+  const latestParts = latest.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const currentParts = current.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const length = Math.max(latestParts.length, currentParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const latestPart = latestParts[index] ?? 0;
+    const currentPart = currentParts[index] ?? 0;
+    if (latestPart > currentPart) return true;
+    if (latestPart < currentPart) return false;
+  }
+  return false;
+}
 
 export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -65,6 +83,14 @@ function Home({ onSelect }: { onSelect: (id: string) => void }) {
     refetchInterval: 60_000
   });
 
+  const versionQuery = useQuery({
+    queryKey: ["app-version"],
+    queryFn: () => apiRequest<AppVersionInfo>("/api/app-version"),
+    staleTime: 5 * 60_000
+  });
+
+  const updateAvailable = versionQuery.data ? isNewerVersion(versionQuery.data.version, APP_VERSION) : false;
+
   useEffect(() => {
     if (!query.data) return;
     const ids = new Set(query.data.map((item) => item.id));
@@ -95,6 +121,23 @@ function Home({ onSelect }: { onSelect: (id: string) => void }) {
             Odswiez liste
           </Button>
         </header>
+
+        {updateAvailable ? (
+          <Glass className="border-cyan/30 bg-cyan/10">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-cyan">Dostepna aktualizacja {versionQuery.data?.version}</p>
+                <p className="mt-1 text-sm text-slate-300">{versionQuery.data?.notes ?? `Masz wersje ${APP_VERSION}.`}</p>
+              </div>
+              <Button
+                disabled={!versionQuery.data?.downloadUrl}
+                onClick={() => versionQuery.data?.downloadUrl && window.beatGrid?.openExternalUrl(versionQuery.data.downloadUrl)}
+              >
+                <Download className="h-4 w-4" /> Pobierz
+              </Button>
+            </div>
+          </Glass>
+        ) : null}
 
         {query.error ? (
           <Glass className="border-red-400/30 bg-red-500/10">
@@ -167,13 +210,17 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
   const progress = storedProgress ?? EMPTY_GAME_PROGRESS;
   const setGuess = useProgressStore((state) => state.setGuess);
   const markSolved = useProgressStore((state) => state.markSolved);
+  const markGivenUp = useProgressStore((state) => state.markGivenUp);
   const markCompleted = useProgressStore((state) => state.markCompleted);
   const resetCrossword = useProgressStore((state) => state.resetCrossword);
+  const playerId = useProgressStore((state) => state.playerId);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeCellIndex, setActiveCellIndex] = useState(0);
   const [completionDismissed, setCompletionDismissed] = useState(false);
   const [feedback, setFeedback] = useState<Record<string, LetterCheckStatus[]>>({});
   const [justCompleted, setJustCompleted] = useState(false);
+  const [hideSolvedEntries, setHideSolvedEntries] = useState(false);
+  const submittedResultRef = useRef(false);
 
   useEffect(() => {
     if (query.data && !activeId) {
@@ -214,6 +261,46 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
     onError: (error) => toast.error(error.message)
   });
 
+  const submitResultMutation = useMutation({
+    mutationFn: (payload: { surrendered: boolean }) =>
+      apiRequest<GameResultSummary>(`/api/crosswords/${crosswordId}/result`, {
+        method: "POST",
+        body: JSON.stringify({
+          playerId,
+          solvedEntryIds: Object.keys(progress.solvedEntries),
+          givenUpEntryIds: Object.keys(progress.givenUpEntries),
+          surrendered: payload.surrendered
+        })
+      }),
+    onError: (error) => toast.error(error.message)
+  });
+  const submitResult = submitResultMutation.mutate;
+  const isSubmittingResult = submitResultMutation.isPending;
+
+  const giveUpMutation = useMutation({
+    mutationFn: () =>
+      apiRequest<CrosswordGiveUpResult>(`/api/crosswords/${crosswordId}/give-up`, {
+        method: "POST",
+        body: JSON.stringify({
+          playerId,
+          solvedEntryIds: Object.keys(progress.solvedEntries),
+          givenUpEntryIds: Object.keys(progress.givenUpEntries),
+          surrendered: true
+        })
+      }),
+    onSuccess: (result) => {
+      result.entries.forEach(({ id, reveal }) => {
+        if (!progress.solvedEntries[id]) markGivenUp(crosswordId, id, reveal);
+      });
+      markCompleted(crosswordId);
+      submittedResultRef.current = true;
+      setJustCompleted(true);
+      setCompletionDismissed(false);
+      toast.info("Odpowiedzi zostaly ujawnione.");
+    },
+    onError: (error) => toast.error(error.message)
+  });
+
   const completedCount = Object.keys(progress.solvedEntries).length + Object.keys(progress.givenUpEntries).length;
   const isCompleted = Boolean(crossword?.entries.length && completedCount >= crossword.entries.length);
   const completedView = isCompleted || justCompleted;
@@ -227,7 +314,11 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
 
   useEffect(() => {
     if (isCompleted && !progress.completed) markCompleted(crosswordId);
-  }, [crosswordId, isCompleted, markCompleted, progress.completed]);
+    if (isCompleted && !submittedResultRef.current && !isSubmittingResult) {
+      submittedResultRef.current = true;
+      submitResult({ surrendered: false });
+    }
+  }, [crosswordId, isCompleted, isSubmittingResult, markCompleted, progress.completed, submitResult]);
 
   useEffect(() => {
     if (!isCompleted && !justCompleted) setCompletionDismissed(false);
@@ -298,9 +389,10 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
 
   const solvedCount = Object.keys(progress.solvedEntries).length;
   const givenUpCount = Object.keys(progress.givenUpEntries).length;
-  const displayedSolvedCount = completedView ? crossword.entries.length : solvedCount;
+  const displayedSolvedCount = solvedCount;
   const resetCurrentCrossword = () => {
     resetCrossword(crosswordId);
+    submittedResultRef.current = false;
     setFeedback({});
     setJustCompleted(false);
     setCompletionDismissed(false);
@@ -332,6 +424,20 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
             className="border-red-400/25 bg-red-500/10 text-red-100 hover:bg-red-500/20"
           >
             Resetuj
+          </Button>
+          <Button
+            onClick={() => setHideSolvedEntries((value) => !value)}
+            className="bg-white/[0.06] text-slate-100"
+          >
+            {hideSolvedEntries ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            {hideSolvedEntries ? "Pokaz zgadniete" : "Ukryj zgadniete"}
+          </Button>
+          <Button
+            disabled={giveUpMutation.isPending || completedView}
+            onClick={() => window.confirm("Poddac cala krzyzowke i pokazac wszystkie odpowiedzi?") && giveUpMutation.mutate()}
+            className="border-red-400/25 bg-red-500/10 text-red-100 hover:bg-red-500/20"
+          >
+            Poddaj sie
           </Button>
           <Button disabled={checkBoardMutation.isPending || completedView} onClick={() => checkBoardMutation.mutate()}>
             <CheckCircle2 className="h-4 w-4" /> Sprawdz krzyzowke
@@ -366,7 +472,7 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
                 </div>
 
                 {activeEntry.clueText ? <p className="rounded-lg border border-white/10 bg-white/[0.05] p-4 text-slate-200">{activeEntry.clueText}</p> : null}
-                {activeEntry.audioUrl ? (
+                {activeEntry.audioUrl && !currentReveal ? (
                   <AudioPlayer url={activeEntry.audioUrl} startTime={activeEntry.audioStartTime} endTime={activeEntry.audioEndTime} />
                 ) : null}
 
@@ -375,8 +481,8 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
             )}
 
             <div className="min-h-0 overflow-auto pr-1">
-              <EntryList title="Poziomo" entries={crossword.entries.filter((entry) => entry.direction === "ACROSS")} activeId={activeEntry.id} progress={progress} onSelect={(entry) => selectEntry(entry)} />
-              <EntryList title="Pionowo" entries={crossword.entries.filter((entry) => entry.direction === "DOWN")} activeId={activeEntry.id} progress={progress} onSelect={(entry) => selectEntry(entry)} />
+              <EntryList title="Poziomo" entries={crossword.entries.filter((entry) => entry.direction === "ACROSS")} activeId={activeEntry.id} progress={progress} hideSolved={hideSolvedEntries} onSelect={(entry) => selectEntry(entry)} />
+              <EntryList title="Pionowo" entries={crossword.entries.filter((entry) => entry.direction === "DOWN")} activeId={activeEntry.id} progress={progress} hideSolved={hideSolvedEntries} onSelect={(entry) => selectEntry(entry)} />
             </div>
           </Glass>
         </div>
@@ -389,7 +495,7 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
               <Trophy className="mx-auto h-14 w-14 text-cyan" />
               <h2 className="mt-4 text-3xl font-black">Plansza ukonczona</h2>
               <p className="mt-2 text-slate-400">
-                Poprawne: {completedView ? crossword.entries.length : solvedCount}. Poddane: {givenUpCount}.
+                Poprawne: {solvedCount}. Poddane: {givenUpCount}.
               </p>
               <div className="mt-6 grid grid-cols-3 gap-3">
                 <Button onClick={() => setCompletionDismissed(true)} className="w-full">
@@ -415,19 +521,22 @@ function EntryList({
   entries,
   activeId,
   progress,
+  hideSolved,
   onSelect
 }: {
   title: string;
   entries: PublicEntry[];
   activeId: string;
   progress: { solvedEntries: Record<string, RevealedEntry>; givenUpEntries: Record<string, RevealedEntry> };
+  hideSolved: boolean;
   onSelect: (entry: PublicEntry) => void;
 }) {
+  const visibleEntries = hideSolved ? entries.filter((entry) => !progress.solvedEntries[entry.id]) : entries;
   return (
     <div className="mb-4">
       <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{title}</h3>
       <div className="grid gap-2">
-        {entries.map((entry) => {
+        {visibleEntries.map((entry) => {
           const solved = Boolean(progress.solvedEntries[entry.id]);
           const givenUp = Boolean(progress.givenUpEntries[entry.id]);
           const reveal = progress.solvedEntries[entry.id] ?? progress.givenUpEntries[entry.id];
@@ -445,7 +554,6 @@ function EntryList({
                 <span className="font-semibold">{entry.orderNumber}. {entryTypeLabel(entry.type)}</span>
                 <span className="shrink-0 text-xs text-slate-500">{entry.length} liter</span>
               </button>
-              {entry.audioUrl && reveal ? <MiniAudioControl url={entry.audioUrl} startTime={entry.audioStartTime} endTime={entry.audioEndTime} /> : null}
               {reveal ? (
                 <div className="mt-2 text-xs text-slate-400">
                   <span className="font-semibold text-slate-200">{reveal.revealedAnswer}</span>
@@ -456,106 +564,10 @@ function EntryList({
             </div>
           );
         })}
+        {!visibleEntries.length ? <p className="rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm text-slate-500">Brak widocznych haseł.</p> : null}
       </div>
     </div>
   );
-}
-
-function MiniAudioControl({ url, startTime, endTime }: { url: string; startTime?: number | null; endTime?: number | null }) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [playing, setPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const segmentStart = startTime ?? 0;
-  const segmentEnd = endTime ?? duration;
-
-  useEffect(() => {
-    const audio = new Audio(url);
-    audio.preload = "metadata";
-    audioRef.current = audio;
-
-    const updateTime = () => {
-      if (endTime !== null && endTime !== undefined && audio.currentTime >= endTime) {
-        audio.pause();
-        audio.currentTime = segmentStart;
-        setPlaying(false);
-      }
-      setCurrentTime(audio.currentTime);
-    };
-    const updateDuration = () => {
-      const fullDuration = Number.isFinite(audio.duration) ? audio.duration : 0;
-      setDuration(endTime ?? fullDuration);
-      if (segmentStart > 0) {
-        audio.currentTime = segmentStart;
-        setCurrentTime(segmentStart);
-      }
-    };
-    const finish = () => {
-      setPlaying(false);
-      setCurrentTime(audio.duration || 0);
-    };
-
-    audio.addEventListener("timeupdate", updateTime);
-    audio.addEventListener("loadedmetadata", updateDuration);
-    audio.addEventListener("durationchange", updateDuration);
-    audio.addEventListener("ended", finish);
-
-    return () => {
-      audio.pause();
-      audio.removeEventListener("timeupdate", updateTime);
-      audio.removeEventListener("loadedmetadata", updateDuration);
-      audio.removeEventListener("durationchange", updateDuration);
-      audio.removeEventListener("ended", finish);
-    };
-  }, [endTime, segmentStart, url]);
-
-  const segmentDuration = Math.max(0, segmentEnd - segmentStart);
-  const percent = segmentDuration > 0 ? Math.min(100, ((currentTime - segmentStart) / segmentDuration) * 100) : 0;
-
-  return (
-    <div className="mt-3 grid grid-cols-[36px_1fr_auto] items-center gap-3 rounded-md border border-white/10 bg-black/20 p-2">
-      <button
-        type="button"
-        aria-label={playing ? "Pauza" : "Odtworz"}
-        onClick={async (event) => {
-          event.stopPropagation();
-          const audio = audioRef.current;
-          if (!audio) return;
-          if (playing) {
-            audio.pause();
-            setPlaying(false);
-            return;
-          }
-          try {
-            if (audio.currentTime < segmentStart || (endTime !== null && endTime !== undefined && audio.currentTime >= endTime)) {
-              audio.currentTime = segmentStart;
-            }
-            await audio.play();
-            setPlaying(true);
-          } catch {
-            toast.error("Nie mozna odtworzyc tego pliku audio.");
-          }
-        }}
-        className="grid h-8 w-8 place-items-center rounded-full border border-cyan/30 bg-cyan/15 text-cyan transition hover:bg-cyan/25"
-      >
-        {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-      </button>
-      <div className="h-2 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full bg-gradient-to-r from-cyan to-violet transition-[width]" style={{ width: `${percent}%` }} />
-      </div>
-      <span className="font-mono text-[11px] text-slate-400">
-        {formatTime(currentTime)} / {formatTime(segmentEnd)}
-      </span>
-    </div>
-  );
-}
-
-function formatTime(seconds: number) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
-  const whole = Math.floor(seconds);
-  const minutes = Math.floor(whole / 60);
-  const rest = String(whole % 60).padStart(2, "0");
-  return `${minutes}:${rest}`;
 }
 
 function Reveal({ reveal, givenUp }: { reveal: RevealedEntry; givenUp: boolean }) {

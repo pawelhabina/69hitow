@@ -37,6 +37,18 @@ ipcMain.handle("open-admin-panel", async () => {
   }
 });
 
+ipcMain.handle("open-external-url", async (_event, value: unknown) => {
+  try {
+    if (typeof value !== "string") return false;
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol)) return false;
+    await shell.openExternal(url.toString());
+    return true;
+  } catch {
+    return false;
+  }
+});
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   createWindow();

@@ -35,6 +35,7 @@ model Crossword {
   updatedAt   DateTime        @updatedAt
   publishedAt DateTime?
   entries     CrosswordEntry[]
+  gameResults GameResult[]
 
   @@index([status, publishedAt])
 }
@@ -62,4 +63,20 @@ model CrosswordEntry {
   updatedAt        DateTime  @updatedAt
 
   @@index([crosswordId, orderNumber])
+}
+
+model GameResult {
+  id          String    @id @default(uuid())
+  playerId    String
+  crosswordId String
+  crossword   Crossword @relation(fields: [crosswordId], references: [id], onDelete: Cascade)
+  solvedCount Int
+  givenUpCount Int
+  totalEntries Int
+  completed   Boolean
+  surrendered Boolean
+  createdAt   DateTime @default(now())
+
+  @@index([playerId, createdAt])
+  @@index([crosswordId, createdAt])
 }

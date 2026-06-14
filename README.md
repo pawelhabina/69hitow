@@ -51,6 +51,9 @@ ADMIN_PASSWORD_HASH="$2b$12$..."
 PUBLIC_API_URL="http://admin.hity.mionix.pl"
 VITE_API_URL="http://admin.hity.mionix.pl"
 VITE_ADMIN_PANEL_URL="http://admin.hity.mionix.pl"
+DESKTOP_APP_VERSION="0.2.0"
+DESKTOP_DOWNLOAD_URL="http://admin.hity.mionix.pl/downloads/69hitow-0.2.0-win-x64.exe"
+DESKTOP_RELEASE_NOTES="Opis zmian widoczny w aplikacji"
 ```
 
 ## Hasło administratora
@@ -162,8 +165,11 @@ Konfiguracja `electron-builder` znajduje się w `apps/desktop/package.json`.
 Publiczne:
 
 - `GET /api/health`
+- `GET /api/app-version`
 - `GET /api/crosswords`
 - `GET /api/crosswords/:id`
+- `POST /api/crosswords/:id/result`
+- `POST /api/crosswords/:id/give-up`
 - `POST /api/crosswords/:crosswordId/entries/:entryId/check`
 - `POST /api/crosswords/:crosswordId/entries/:entryId/give-up`
 
@@ -199,3 +205,7 @@ Normalny interfejs gracza nie pokazuje panelu administratora. Ukryty skrót:
 Skrót otwiera zewnętrzny panel ustawiony przez `VITE_ADMIN_PANEL_URL` przez bezpieczne `shell.openExternal`.
 
 Postęp gracza jest lokalny w Zustand persist: widziane plansze, rozwiązane i poddane hasła, wpisane odpowiedzi oraz ukończenie planszy.
+
+Przy starcie aplikacja pobiera `GET /api/app-version`. Jeśli backend zwróci nowszą wersję niż wersja wbudowana w klienta, na ekranie głównym pojawi się przycisk pobrania instalatora z `DESKTOP_DOWNLOAD_URL`.
+
+Po ukończeniu lub poddaniu krzyżówki klient wysyła anonimowy wynik do bazy przez publiczne API. Identyfikator gracza jest generowany lokalnie i zapisywany w localStorage, bez kont użytkowników i logowania.

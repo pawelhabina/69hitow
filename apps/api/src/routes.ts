@@ -9,6 +9,7 @@ import {
   crosswordCreateSchema,
   crosswordUpdateSchema,
   entryInputSchema,
+  gameResultSchema,
   loginSchema,
   normalizeAnswer,
   validateCrosswordLayout
@@ -78,6 +79,39 @@ function reveal(entry: {
   };
 }
 
+async function createGameResult(input: {
+  crosswordId: string;
+  playerId: string;
+  solvedEntryIds: string[];
+  givenUpEntryIds: string[];
+  surrendered: boolean;
+}) {
+  const crossword = await prisma.crossword.findFirst({
+    where: { id: input.crosswordId, status: "PUBLISHED" },
+    include: { entries: { select: { id: true } } }
+  });
+  if (!crossword) return null;
+
+  const entryIds = new Set(crossword.entries.map((entry) => entry.id));
+  const solved = new Set(input.solvedEntryIds.filter((id) => entryIds.has(id)));
+  const givenUp = new Set(input.givenUpEntryIds.filter((id) => entryIds.has(id) && !solved.has(id)));
+  const solvedCount = solved.size;
+  const givenUpCount = input.surrendered ? crossword.entries.length - solvedCount : givenUp.size;
+  const completed = solvedCount + givenUpCount >= crossword.entries.length;
+
+  return prisma.gameResult.create({
+    data: {
+      playerId: input.playerId,
+      crosswordId: crossword.id,
+      solvedCount,
+      givenUpCount,
+      totalEntries: crossword.entries.length,
+      completed,
+      surrendered: input.surrendered
+    }
+  });
+}
+
 function sendAudioFile(res: Response, filename: string) {
   return res.sendFile(path.join(audioUploadDir, filename), (error) => {
     if (!error || res.headersSent) return;
@@ -92,6 +126,14 @@ function sendAudioFile(res: Response, filename: string) {
 
 routes.get("/health", (_req, res) => {
   res.json({ ok: true, service: "music-crossword-api" });
+});
+
+routes.get("/app-version", (_req, res) => {
+  res.json({
+    version: env.desktopAppVersion,
+    downloadUrl: env.desktopDownloadUrl || null,
+    notes: env.desktopReleaseNotes || null
+  });
 });
 
 routes.get(
@@ -192,6 +234,57 @@ routes.post(
     return res.json({
       allCorrect: entries.every((entry) => entry.correct),
       entries
+    });
+  })
+);
+
+routes.post(
+  "/crosswords/:id/result",
+  asyncRoute(async (req, res) => {
+    const id = routeParam(req, "id");
+    const input = gameResultSchema.parse(req.body);
+    const result = await createGameResult({
+      crosswordId: id,
+      playerId: input.playerId,
+      solvedEntryIds: input.solvedEntryIds,
+      givenUpEntryIds: input.givenUpEntryIds,
+      surrendered: input.surrendered
+    });
+    if (!result) return res.status(404).json({ message: "Nie znaleziono krzyzowki." });
+    return res.status(201).json({
+      id: result.id,
+      playerId: result.playerId,
+      crosswordId: result.crosswordId,
+      solvedCount: result.solvedCount,
+      givenUpCount: result.givenUpCount,
+      totalEntries: result.totalEntries,
+      completed: result.completed,
+      surrendered: result.surrendered,
+      createdAt: result.createdAt.toISOString()
+    });
+  })
+);
+
+routes.post(
+  "/crosswords/:id/give-up",
+  asyncRoute(async (req, res) => {
+    const id = routeParam(req, "id");
+    const input = gameResultSchema.parse({ ...req.body, surrendered: true });
+    const crossword = await prisma.crossword.findFirst({
+      where: { id, status: "PUBLISHED" },
+      include: { entries: { orderBy: [{ direction: "asc" }, { orderNumber: "asc" }] } }
+    });
+    if (!crossword) return res.status(404).json({ message: "Nie znaleziono krzyzowki." });
+    const result = await createGameResult({
+      crosswordId: crossword.id,
+      playerId: input.playerId,
+      solvedEntryIds: input.solvedEntryIds,
+      givenUpEntryIds: crossword.entries.map((entry) => entry.id),
+      surrendered: true
+    });
+    return res.json({
+      resultId: result?.id ?? null,
+      entries: crossword.entries.map((entry) => ({ id: entry.id, reveal: reveal(entry) }))
     });
   })
 );

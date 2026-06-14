@@ -88,6 +88,13 @@ export const checkBoardSchema = z.object({
   guesses: z.record(z.string(), z.string().max(500))
 });
 
+export const gameResultSchema = z.object({
+  playerId: z.string().trim().min(8).max(120),
+  solvedEntryIds: z.array(z.string().uuid()).default([]),
+  givenUpEntryIds: z.array(z.string().uuid()).default([]),
+  surrendered: z.boolean().default(false)
+});
+
 export type EntryInput = z.infer<typeof entryInputSchema>;
 export type LetterCheckStatus = "correct" | "incorrect" | "missing";
 
@@ -142,6 +149,29 @@ export interface BoardCheckEntryResult {
 export interface BoardCheckResult {
   allCorrect: boolean;
   entries: BoardCheckEntryResult[];
+}
+
+export interface AppVersionInfo {
+  version: string;
+  downloadUrl: string | null;
+  notes: string | null;
+}
+
+export interface CrosswordGiveUpResult {
+  entries: Array<{ id: string; reveal: RevealedEntry }>;
+  resultId: string | null;
+}
+
+export interface GameResultSummary {
+  id: string;
+  playerId: string;
+  crosswordId: string;
+  solvedCount: number;
+  givenUpCount: number;
+  totalEntries: number;
+  completed: boolean;
+  surrendered: boolean;
+  createdAt: string;
 }
 
 export function entryTypeLabel(type: EntryType): string {
