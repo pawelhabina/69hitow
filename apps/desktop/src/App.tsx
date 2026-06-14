@@ -44,7 +44,7 @@ import { cn } from "@/lib/utils";
 import { useProgressStore } from "@/store/progress";
 
 const EMPTY_GAME_PROGRESS = { solvedEntries: {}, givenUpEntries: {}, guesses: {}, completed: false };
-const APP_VERSION = "0.2.0";
+const APP_VERSION = "0.2.1";
 
 function isNewerVersion(latest: string, current: string) {
   const latestParts = latest.split(".").map((part) => Number.parseInt(part, 10) || 0);
