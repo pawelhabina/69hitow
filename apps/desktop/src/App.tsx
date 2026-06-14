@@ -44,7 +44,7 @@ import { cn } from "@/lib/utils";
 import { useProgressStore } from "@/store/progress";
 
 const EMPTY_GAME_PROGRESS = { solvedEntries: {}, givenUpEntries: {}, guesses: {}, completed: false };
-const APP_VERSION = "0.2.1";
+const APP_VERSION = "0.2.2";
 
 function isNewerVersion(latest: string, current: string) {
   const latestParts = latest.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -57,6 +57,20 @@ function isNewerVersion(latest: string, current: string) {
     if (latestPart < currentPart) return false;
   }
   return false;
+}
+
+async function openDownloadUrl(url: string) {
+  try {
+    const openedExternally = await window.beatGrid?.openExternalUrl(url);
+    if (openedExternally) return;
+  } catch {
+    // Fallback below covers browser dev mode and failed Electron IPC.
+  }
+
+  const openedWindow = window.open(url, "_blank", "noopener,noreferrer");
+  if (openedWindow) return;
+
+  window.location.href = url;
 }
 
 export function App() {
@@ -138,7 +152,12 @@ function Home({ onSelect }: { onSelect: (id: string) => void }) {
               </div>
               <Button
                 disabled={!versionQuery.data?.downloadUrl}
-                onClick={() => versionQuery.data?.downloadUrl && window.beatGrid?.openExternalUrl(versionQuery.data.downloadUrl)}
+                onClick={() => {
+                  if (!versionQuery.data?.downloadUrl) return;
+                  openDownloadUrl(versionQuery.data.downloadUrl).catch(() => {
+                    toast.error("Nie udalo sie otworzyc linku pobierania.");
+                  });
+                }}
               >
                 <Download className="h-4 w-4" /> Pobierz
               </Button>

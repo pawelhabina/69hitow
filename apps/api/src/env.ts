@@ -8,7 +8,7 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET ?? "",
   adminPasswordHash: process.env.ADMIN_PASSWORD_HASH ?? "",
   publicApiUrl: process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 6969}`,
-  desktopAppVersion: process.env.DESKTOP_APP_VERSION ?? "0.2.1",
+  desktopAppVersion: process.env.DESKTOP_APP_VERSION ?? "0.2.2",
   desktopDownloadUrl: process.env.DESKTOP_DOWNLOAD_URL ?? "",
   desktopReleaseNotes: process.env.DESKTOP_RELEASE_NOTES ?? ""
 };

@@ -24,6 +24,17 @@ function createWindow() {
   } else {
     mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const externalUrl = new URL(url);
+      if (!["http:", "https:"].includes(externalUrl.protocol)) return { action: "deny" };
+      shell.openExternal(externalUrl.toString());
+    } catch {
+      return { action: "deny" };
+    }
+    return { action: "deny" };
+  });
 }
 
 ipcMain.handle("open-admin-panel", async () => {
