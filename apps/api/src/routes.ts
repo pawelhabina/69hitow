@@ -451,13 +451,16 @@ routes.post(
     });
     if (!crossword) return res.status(404).json({ message: "Nie znaleziono krzyzowki." });
     const input = entryInputSchema.parse(req.body);
+    const allowInvalidPlacement = req.body.allowInvalidPlacement === "true" && crossword.status === "DRAFT";
     const audioPath = req.file ? relativeAudioPath(req.file) : null;
     const { errors, normalizedAnswer } = validateEntryBusinessRules(
       input,
       Boolean(audioPath),
       crossword.entries,
       crossword.gridRows,
-      crossword.gridColumns
+      crossword.gridColumns,
+      undefined,
+      { validatePlacement: !allowInvalidPlacement }
     );
     if (errors.length) {
       removeLocalFile(audioPath);

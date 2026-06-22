@@ -71,6 +71,13 @@ interface EntryFormState {
   orderNumber: number;
 }
 
+interface EntryValidation {
+  placementErrors: string[];
+  blockingErrors: string[];
+  saveBlockingErrors: string[];
+  allErrors: string[];
+}
+
 export function App() {
   const [token, updateToken] = useState(getToken());
 
@@ -275,9 +282,9 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
 
   const crossword = query.data;
 
-  const getPlacementErrors = (entryForm: EntryFormState, entryAudio: File | null, entry?: AdminEntry | null) => {
-    if (!crossword) return [];
-    const errors = validateEntryPlacement(
+  const getEntryValidation = (entryForm: EntryFormState, entryAudio: File | null, entry?: AdminEntry | null): EntryValidation => {
+    if (!crossword) return { placementErrors: [], blockingErrors: [], saveBlockingErrors: [], allErrors: [] };
+    const placementErrors = validateEntryPlacement(
       entryForm,
       crossword.entries.map((entry) => ({
         id: entry.id,
@@ -290,16 +297,20 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
       crossword.gridColumns,
       entry?.id
     );
+    const blockingErrors: string[] = [];
+    if (!normalizeAnswer(entryForm.answer)) {
+      blockingErrors.push("Znormalizowana odpowiedz jest pusta.");
+    }
     if ((entryForm.type === "TEXT_CLUE" || entryForm.type === "COMPLETE_LYRIC") && !entryForm.clueText.trim()) {
-      errors.push("Ten typ wymaga tekstu podpowiedzi.");
+      blockingErrors.push("Ten typ wymaga tekstu podpowiedzi.");
     }
     if ((entryForm.type === "GUESS_TITLE_FROM_AUDIO" || entryForm.type === "GUESS_ARTIST_FROM_AUDIO") && !entryAudio && !entry?.audioPath) {
-      errors.push("Ten typ wymaga pliku MP3.");
+      blockingErrors.push("Ten typ wymaga pliku MP3.");
     }
     const audioStartTime = parseTimeInput(entryForm.audioStartTime);
     const audioEndTime = parseTimeInput(entryForm.audioEndTime);
     if (Number.isNaN(audioStartTime) || Number.isNaN(audioEndTime)) {
-      errors.push("Czas fragmentu audio wpisz jako sekundy albo mm:ss.SSS, np. 0:45.250.");
+      blockingErrors.push("Czas fragmentu audio wpisz jako sekundy albo mm:ss.SSS, np. 0:45.250.");
     }
     if (
       audioStartTime !== null &&
@@ -308,14 +319,15 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
       !Number.isNaN(audioEndTime) &&
       audioEndTime <= audioStartTime
     ) {
-      errors.push("Koniec fragmentu audio musi byc pozniej niz start.");
+      blockingErrors.push("Koniec fragmentu audio musi byc pozniej niz start.");
     }
-    return errors;
+    const saveBlockingErrors = crossword.status === "DRAFT" ? blockingErrors : [...blockingErrors, ...placementErrors];
+    return { placementErrors, blockingErrors, saveBlockingErrors, allErrors: [...blockingErrors, ...placementErrors] };
   };
 
-  const newPlacementErrors = useMemo(() => getPlacementErrors(newForm, newAudio), [crossword, newAudio, newForm]);
-  const editPlacementErrors = useMemo(
-    () => (editingEntry ? getPlacementErrors(editForm, editAudio, editingEntry) : []),
+  const newValidation = useMemo(() => getEntryValidation(newForm, newAudio), [crossword, newAudio, newForm]);
+  const editValidation = useMemo(
+    () => (editingEntry ? getEntryValidation(editForm, editAudio, editingEntry) : { placementErrors: [], blockingErrors: [], saveBlockingErrors: [], allErrors: [] }),
     [crossword, editAudio, editForm, editingEntry]
   );
 
@@ -346,6 +358,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
       const audioEndTime = parseTimeInput(entryForm.audioEndTime);
       data.set("audioStartTime", audioStartTime === null || Number.isNaN(audioStartTime) ? "" : String(audioStartTime));
       data.set("audioEndTime", audioEndTime === null || Number.isNaN(audioEndTime) ? "" : String(audioEndTime));
+      if (crossword?.status === "DRAFT") data.set("allowInvalidPlacement", "true");
       if (entryAudio) data.set("audio", entryAudio);
       const path = entry
         ? `/api/admin/crosswords/${crosswordId}/entries/${entry.id}`
@@ -550,8 +563,8 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
             className="grid gap-3"
             onSubmit={(event) => {
               event.preventDefault();
-              if (newPlacementErrors.length) {
-                toast.error(newPlacementErrors[0]);
+              if (newValidation.saveBlockingErrors.length) {
+                toast.error(newValidation.saveBlockingErrors[0]);
                 return;
               }
               entryMutation.mutate({ entryForm: newForm, entryAudio: newAudio });
@@ -635,9 +648,12 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
                   {layoutErrors.length > 4 ? <p>...i jeszcze {layoutErrors.length - 4}.</p> : null}
                 </motion.div>
               ) : null}
-              {newPlacementErrors.length ? (
+              {newValidation.allErrors.length ? (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="rounded-md border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
-                  {newPlacementErrors.map((error) => (
+                  {newValidation.placementErrors.length && !newValidation.blockingErrors.length ? (
+                    <p className="font-semibold">Mozesz zapisac szkic z tym bledem, ale publikacja bedzie zablokowana.</p>
+                  ) : null}
+                  {newValidation.allErrors.map((error) => (
                     <p key={error}>{error}</p>
                   ))}
                 </motion.div>
@@ -645,7 +661,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
             </AnimatePresence>
 
             <div className="flex gap-2">
-              <Button type="submit" disabled={entryMutation.isPending || Boolean(newPlacementErrors.length)} className="flex-1">
+              <Button type="submit" disabled={entryMutation.isPending || Boolean(newValidation.saveBlockingErrors.length)} className="flex-1">
                 <Save className="h-4 w-4" /> Zapisz haslo
               </Button>
             </div>
@@ -691,7 +707,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
             entry={editingEntry}
             form={editForm}
             audio={editAudio}
-            errors={editPlacementErrors}
+            validation={editValidation}
             isSaving={entryMutation.isPending}
             isDeleting={deleteEntryMutation.isPending}
             onChange={setEditForm}
@@ -702,8 +718,8 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
               setEditAudio(null);
             }}
             onSave={() => {
-              if (editPlacementErrors.length) {
-                toast.error(editPlacementErrors[0]);
+              if (editValidation.saveBlockingErrors.length) {
+                toast.error(editValidation.saveBlockingErrors[0]);
                 return;
               }
               entryMutation.mutate({ entry: editingEntry, entryForm: editForm, entryAudio: editAudio });
@@ -720,7 +736,7 @@ function EntryEditModal({
   entry,
   form,
   audio,
-  errors,
+  validation,
   isSaving,
   isDeleting,
   onChange,
@@ -732,7 +748,7 @@ function EntryEditModal({
   entry: AdminEntry;
   form: EntryFormState;
   audio: File | null;
-  errors: string[];
+  validation: EntryValidation;
   isSaving: boolean;
   isDeleting: boolean;
   onChange: (form: EntryFormState) => void;
@@ -876,9 +892,12 @@ function EntryEditModal({
             </Card>
 
             <AnimatePresence>
-              {errors.length ? (
+              {validation.allErrors.length ? (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="rounded-md border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
-                  {errors.map((error) => (
+                  {validation.placementErrors.length && !validation.blockingErrors.length ? (
+                    <p className="font-semibold">Mozesz zapisac szkic z tym bledem, ale publikacja bedzie zablokowana.</p>
+                  ) : null}
+                  {validation.allErrors.map((error) => (
                     <p key={error}>{error}</p>
                   ))}
                 </motion.div>
@@ -895,7 +914,7 @@ function EntryEditModal({
             <Button type="button" className="bg-white/[0.06] text-slate-200" onClick={onClose}>
               Anuluj
             </Button>
-            <Button type="submit" disabled={isSaving || Boolean(errors.length)}>
+            <Button type="submit" disabled={isSaving || Boolean(validation.saveBlockingErrors.length)}>
               <Save className="h-4 w-4" /> Zapisz zmiany
             </Button>
           </div>

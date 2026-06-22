@@ -60,15 +60,79 @@ export function AdminGrid({ rows, columns, entries, activeEntryId, draft, showAn
   const markInvalid = (row: number, column: number) => {
     if (row >= 0 && column >= 0 && row < rows && column < columns) invalidCells.add(keyOf(row, column));
   };
-  const getCellWithoutDraggedEntry = (row: number, column: number) => {
+  const getCellWithoutIgnoredEntry = (row: number, column: number, ignoredEntryId?: string) => {
     const cell = cells.get(keyOf(row, column));
-    if (!cell || !dragState) return cell;
-    const entriesWithoutDragged = cell.entries.filter(({ entry }) => entry.id !== dragState.entry.id);
-    if (!entriesWithoutDragged.length) return undefined;
+    if (!cell || !ignoredEntryId) return cell;
+    const entriesWithoutIgnored = cell.entries.filter(({ entry }) => entry.id !== ignoredEntryId);
+    if (!entriesWithoutIgnored.length) return undefined;
     return {
-      letters: entriesWithoutDragged.map(({ entry, index }) => entry.normalizedAnswer[index]),
-      entries: entriesWithoutDragged
+      letters: entriesWithoutIgnored.map(({ entry, index }) => entry.normalizedAnswer[index]),
+      entries: entriesWithoutIgnored
     };
+  };
+
+  const markPreviewErrors = (preview: PreviewEntry, ignoredEntryId?: string) => {
+    const normalizedPreview = normalizeAnswer(preview.answer);
+    const oppositeDirection: Direction = preview.direction === "ACROSS" ? "DOWN" : "ACROSS";
+
+    [...normalizedPreview].forEach((letter, index) => {
+      const row = preview.startRow + (preview.direction === "DOWN" ? index : 0);
+      const column = preview.startColumn + (preview.direction === "ACROSS" ? index : 0);
+      const existingCell = getCellWithoutIgnoredEntry(row, column, ignoredEntryId);
+
+      if (row < 0 || column < 0 || row >= rows || column >= columns) {
+        markInvalid(row, column);
+        return;
+      }
+
+      if (existingCell && !existingCell.letters.every((existingLetter) => existingLetter === letter)) {
+        markInvalid(row, column);
+      }
+
+      if (existingCell?.entries.some(({ entry }) => entry.direction === preview.direction)) {
+        markInvalid(row, column);
+      }
+
+      const hasValidCrossing =
+        existingCell?.entries.some(({ entry }) => entry.direction === oppositeDirection) &&
+        existingCell.letters.every((existingLetter) => existingLetter === letter);
+      const sideNeighbors =
+        preview.direction === "ACROSS"
+          ? [
+              [row - 1, column],
+              [row + 1, column]
+            ]
+          : [
+              [row, column - 1],
+              [row, column + 1]
+            ];
+
+      if (!hasValidCrossing) {
+        sideNeighbors.forEach(([neighborRow, neighborColumn]) => {
+          if (getCellWithoutIgnoredEntry(neighborRow, neighborColumn, ignoredEntryId)) {
+            markInvalid(row, column);
+            markInvalid(neighborRow, neighborColumn);
+          }
+        });
+      }
+    });
+
+    const endRow = preview.startRow + (preview.direction === "DOWN" ? normalizedPreview.length - 1 : 0);
+    const endColumn = preview.startColumn + (preview.direction === "ACROSS" ? normalizedPreview.length - 1 : 0);
+    const beforeRow = preview.startRow - (preview.direction === "DOWN" ? 1 : 0);
+    const beforeColumn = preview.startColumn - (preview.direction === "ACROSS" ? 1 : 0);
+    const afterRow = endRow + (preview.direction === "DOWN" ? 1 : 0);
+    const afterColumn = endColumn + (preview.direction === "ACROSS" ? 1 : 0);
+
+    [
+      [beforeRow, beforeColumn, preview.startRow, preview.startColumn],
+      [afterRow, afterColumn, endRow, endColumn]
+    ].forEach(([neighborRow, neighborColumn, ownRow, ownColumn]) => {
+      if (getCellWithoutIgnoredEntry(neighborRow, neighborColumn, ignoredEntryId)) {
+        markInvalid(neighborRow, neighborColumn);
+        markInvalid(ownRow, ownColumn);
+      }
+    });
   };
 
   cells.forEach((cell, key) => {
@@ -123,69 +187,8 @@ export function AdminGrid({ rows, columns, entries, activeEntryId, draft, showAn
     });
   });
 
-  if (dragPreview) {
-    const normalizedPreview = normalizeAnswer(dragPreview.answer);
-    const oppositeDirection: Direction = dragPreview.direction === "ACROSS" ? "DOWN" : "ACROSS";
-
-    [...normalizedPreview].forEach((letter, index) => {
-      const row = dragPreview.startRow + (dragPreview.direction === "DOWN" ? index : 0);
-      const column = dragPreview.startColumn + (dragPreview.direction === "ACROSS" ? index : 0);
-      const existingCell = getCellWithoutDraggedEntry(row, column);
-
-      if (row < 0 || column < 0 || row >= rows || column >= columns) {
-        markInvalid(row, column);
-        return;
-      }
-
-      if (existingCell && !existingCell.letters.every((existingLetter) => existingLetter === letter)) {
-        markInvalid(row, column);
-      }
-
-      if (existingCell?.entries.some(({ entry }) => entry.direction === dragPreview.direction)) {
-        markInvalid(row, column);
-      }
-
-      const hasValidCrossing =
-        existingCell?.entries.some(({ entry }) => entry.direction === oppositeDirection) &&
-        existingCell.letters.every((existingLetter) => existingLetter === letter);
-      const sideNeighbors =
-        dragPreview.direction === "ACROSS"
-          ? [
-              [row - 1, column],
-              [row + 1, column]
-            ]
-          : [
-              [row, column - 1],
-              [row, column + 1]
-            ];
-
-      if (!hasValidCrossing) {
-        sideNeighbors.forEach(([neighborRow, neighborColumn]) => {
-          if (getCellWithoutDraggedEntry(neighborRow, neighborColumn)) {
-            markInvalid(row, column);
-            markInvalid(neighborRow, neighborColumn);
-          }
-        });
-      }
-    });
-
-    const endRow = dragPreview.startRow + (dragPreview.direction === "DOWN" ? normalizedPreview.length - 1 : 0);
-    const endColumn = dragPreview.startColumn + (dragPreview.direction === "ACROSS" ? normalizedPreview.length - 1 : 0);
-    const beforeRow = dragPreview.startRow - (dragPreview.direction === "DOWN" ? 1 : 0);
-    const beforeColumn = dragPreview.startColumn - (dragPreview.direction === "ACROSS" ? 1 : 0);
-    const afterRow = endRow + (dragPreview.direction === "DOWN" ? 1 : 0);
-    const afterColumn = endColumn + (dragPreview.direction === "ACROSS" ? 1 : 0);
-
-    [
-      [beforeRow, beforeColumn, dragPreview.startRow, dragPreview.startColumn],
-      [afterRow, afterColumn, endRow, endColumn]
-    ].forEach(([neighborRow, neighborColumn, ownRow, ownColumn]) => {
-      if (getCellWithoutDraggedEntry(neighborRow, neighborColumn)) {
-        markInvalid(neighborRow, neighborColumn);
-        markInvalid(ownRow, ownColumn);
-      }
-    });
-  }
+  if (draft?.answer) markPreviewErrors(draft);
+  if (dragPreview) markPreviewErrors(dragPreview, dragState?.entry.id);
 
   [draft, dragPreview].forEach((preview) => {
     if (!preview?.answer) return;
