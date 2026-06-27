@@ -51,8 +51,8 @@ ADMIN_PASSWORD_HASH="$2b$12$..."
 PUBLIC_API_URL="http://admin.hity.mionix.pl"
 VITE_API_URL="http://admin.hity.mionix.pl"
 VITE_ADMIN_PANEL_URL="http://admin.hity.mionix.pl"
-DESKTOP_APP_VERSION="0.2.4"
-DESKTOP_DOWNLOAD_URL="http://admin.hity.mionix.pl/downloads/69hitow-0.2.4-win-x64.exe"
+DESKTOP_APP_VERSION="0.2.5"
+DESKTOP_DOWNLOAD_URL="http://admin.hity.mionix.pl/downloads/69hitow-0.2.5-win-x64.exe"
 DESKTOP_RELEASE_NOTES="Opis zmian widoczny w aplikacji"
 ```
 

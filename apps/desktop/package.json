@@ -1,6 +1,6 @@
 {
   "name": "@music-crossword/desktop",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "type": "module",
   "main": "out/main/main.js",
@@ -10,12 +10,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
     "preview": "electron-vite preview",
-    "dist:mac": "pnpm build && electron-builder --mac dmg zip --arm64 --x64 --publish never",
-    "dist:mac:arm64": "pnpm build && electron-builder --mac dmg zip --arm64 --publish never",
-    "dist:mac:x64": "pnpm build && electron-builder --mac dmg zip --x64 --publish never",
-    "dist:win": "pnpm build && electron-builder --win nsis --x64 --publish never",
-    "dist:win:arm64": "pnpm build && electron-builder --win nsis --arm64 --publish never",
-    "dist:all": "pnpm build && electron-builder --mac dmg zip --win nsis --publish never"
+    "verify:production-bundle": "node scripts/verify-production-bundle.mjs",
+    "dist:mac": "pnpm build && pnpm verify:production-bundle && electron-builder --mac dmg zip --arm64 --x64 --publish never",
+    "dist:mac:arm64": "pnpm build && pnpm verify:production-bundle && electron-builder --mac dmg zip --arm64 --publish never",
+    "dist:mac:x64": "pnpm build && pnpm verify:production-bundle && electron-builder --mac dmg zip --x64 --publish never",
+    "dist:win": "pnpm build && pnpm verify:production-bundle && electron-builder --win nsis --x64 --publish never",
+    "dist:win:arm64": "pnpm build && pnpm verify:production-bundle && electron-builder --win nsis --arm64 --publish never",
+    "dist:all": "pnpm build && pnpm verify:production-bundle && electron-builder --mac dmg zip --win nsis --publish never"
   },
   "dependencies": {
     "@music-crossword/shared": "workspace:*",

@@ -1,7 +1,10 @@
 import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
 import { join } from "node:path";
 
-const ADMIN_PANEL_URL = import.meta.env.VITE_ADMIN_PANEL_URL ?? process.env.VITE_ADMIN_PANEL_URL ?? "http://localhost:6970";
+const ADMIN_PANEL_URL =
+  import.meta.env.VITE_ADMIN_PANEL_URL?.trim() ||
+  process.env.VITE_ADMIN_PANEL_URL?.trim() ||
+  (import.meta.env.PROD ? "http://admin.hity.mionix.pl" : "http://localhost:6970");
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
