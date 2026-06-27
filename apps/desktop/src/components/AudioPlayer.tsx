@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import WaveSurfer from "wavesurfer.js";
 import { Pause, Play } from "lucide-react";
+import { clampAudioTime } from "@music-crossword/shared";
 import { Button } from "./Button";
 
 export function AudioPlayer({ url, startTime, endTime }: { url: string; startTime?: number | null; endTime?: number | null }) {
@@ -29,12 +30,22 @@ export function AudioPlayer({ url, startTime, endTime }: { url: string; startTim
     wave.on("finish", () => setPlaying(false));
     wave.on("pause", () => setPlaying(false));
     wave.on("timeupdate", (currentTime) => {
+      if (currentTime < segmentStart) {
+        wave.setTime(segmentStart);
+        return;
+      }
       if (segmentEnd !== undefined && currentTime >= segmentEnd) {
         wave.pause();
         wave.setTime(segmentStart);
         setPlaying(false);
       }
     });
+    const keepInsideSegment = (currentTime: number) => {
+      const clampedTime = clampAudioTime(currentTime, segmentStart, segmentEnd, wave.getDuration());
+      if (Math.abs(clampedTime - currentTime) > 0.001) wave.setTime(clampedTime);
+    };
+    wave.on("interaction", keepInsideSegment);
+    wave.on("seeking", keepInsideSegment);
     waveRef.current = wave;
     return () => wave.destroy();
   }, [segmentEnd, segmentStart, url]);
@@ -53,7 +64,8 @@ export function AudioPlayer({ url, startTime, endTime }: { url: string; startTim
             setPlaying(false);
             return;
           }
-          await wave.play(segmentStart, segmentEnd);
+          const currentTime = clampAudioTime(wave.getCurrentTime(), segmentStart, segmentEnd, wave.getDuration());
+          await wave.play(currentTime, segmentEnd);
           setPlaying(true);
         }}
       >

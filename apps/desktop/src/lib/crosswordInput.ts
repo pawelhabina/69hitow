@@ -1,4 +1,9 @@
-import { normalizeAnswer, type PublicEntry, type RevealedEntry } from "@music-crossword/shared";
+import {
+  normalizeAnswer,
+  type LetterCheckStatus,
+  type PublicEntry,
+  type RevealedEntry
+} from "@music-crossword/shared";
 
 export interface ProgressLike {
   solvedEntries: Record<string, RevealedEntry>;
@@ -10,6 +15,8 @@ export interface EntryCellRef {
   entry: PublicEntry;
   index: number;
 }
+
+export type BoardFeedback = Record<string, LetterCheckStatus[]>;
 
 export function cellKey(row: number, column: number) {
   return `${row}:${column}`;
@@ -36,7 +43,7 @@ export function buildEntryCellMap(entries: PublicEntry[]) {
 
 export function getEntryLetters(entry: PublicEntry, progress: ProgressLike) {
   const reveal = progress.solvedEntries[entry.id] ?? progress.givenUpEntries[entry.id];
-  if (reveal) return toLetterSlots(reveal.revealedAnswer, entry.length, false);
+  if (reveal) return toLetterSlots(normalizeAnswer(reveal.revealedAnswer), entry.length, false);
   return toLetterSlots(progress.guesses[entry.id] ?? "", entry.length, true);
 }
 
@@ -47,7 +54,7 @@ export function buildCellLetters(entries: PublicEntry[], progress: ProgressLike)
     const revealed = refs
       .map(({ entry, index }) => {
         const reveal = progress.solvedEntries[entry.id] ?? progress.givenUpEntries[entry.id];
-        return reveal ? toLetterSlots(reveal.revealedAnswer, entry.length, false)[index] : "";
+        return reveal ? toLetterSlots(normalizeAnswer(reveal.revealedAnswer), entry.length, false)[index] : "";
       })
       .find(Boolean);
     const guessed = refs.map(({ entry, index }) => getEntryLetters(entry, progress)[index]).find(Boolean);
@@ -62,14 +69,16 @@ export function writeCrossingCell(params: {
   letter: string;
   progress: ProgressLike;
   entryCellsByKey: Map<string, EntryCellRef[]>;
+  feedback?: BoardFeedback;
 }) {
   const { row, column } = getEntryCell(params.entry, params.index);
   const related = params.entryCellsByKey.get(cellKey(row, column)) ?? [];
-  const lockedLetter = findLockedLetter(related, params.progress);
+  const lockedLetter = findLockedLetter(related, params.progress, params.feedback);
   const normalizedLetter = normalizeAnswer(params.letter)[0] ?? "";
-  if (lockedLetter && normalizedLetter && lockedLetter !== normalizedLetter) {
+  if (lockedLetter) {
     return {
-      blocked: true as const,
+      blocked: lockedLetter !== normalizedLetter,
+      unchanged: lockedLetter === normalizedLetter,
       lockedLetter,
       affectedEntryIds: related.map(({ entry }) => entry.id),
       guesses: params.progress.guesses
@@ -83,10 +92,11 @@ export function clearCrossingCell(params: {
   index: number;
   progress: ProgressLike;
   entryCellsByKey: Map<string, EntryCellRef[]>;
+  feedback?: BoardFeedback;
 }) {
   const { row, column } = getEntryCell(params.entry, params.index);
   const related = params.entryCellsByKey.get(cellKey(row, column)) ?? [];
-  const lockedLetter = findLockedLetter(related, params.progress);
+  const lockedLetter = findLockedLetter(related, params.progress, params.feedback);
   if (lockedLetter) {
     return {
       blocked: true as const,
@@ -96,6 +106,31 @@ export function clearCrossingCell(params: {
     };
   }
   return updateRelatedGuesses(related, params.progress, "");
+}
+
+export function getLockedCellLetter(params: {
+  entry: PublicEntry;
+  index: number;
+  progress: ProgressLike;
+  entryCellsByKey: Map<string, EntryCellRef[]>;
+  feedback?: BoardFeedback;
+}) {
+  const { row, column } = getEntryCell(params.entry, params.index);
+  const related = params.entryCellsByKey.get(cellKey(row, column)) ?? [];
+  return findLockedLetter(related, params.progress, params.feedback);
+}
+
+export function synchronizeCrossingGuesses(entries: PublicEntry[], progress: ProgressLike) {
+  const cellLetters = buildCellLetters(entries, progress);
+  return Object.fromEntries(
+    entries.map((entry) => {
+      const letters = Array.from({ length: entry.length }, (_, index) => {
+        const { row, column } = getEntryCell(entry, index);
+        return cellLetters[cellKey(row, column)] ?? "";
+      });
+      return [entry.id, serializeLetterSlots(letters)];
+    })
+  );
 }
 
 function updateRelatedGuesses(related: EntryCellRef[], progress: ProgressLike, letter: string) {
@@ -111,19 +146,30 @@ function updateRelatedGuesses(related: EntryCellRef[], progress: ProgressLike, l
   return { blocked: false as const, affectedEntryIds, guesses };
 }
 
-function findLockedLetter(related: EntryCellRef[], progress: ProgressLike) {
-  return related
+function findLockedLetter(related: EntryCellRef[], progress: ProgressLike, feedback?: BoardFeedback) {
+  const revealed = related
     .map(({ entry, index }) => {
       const reveal = progress.solvedEntries[entry.id] ?? progress.givenUpEntries[entry.id];
-      return reveal ? toLetterSlots(reveal.revealedAnswer, entry.length, false)[index] : "";
+      return reveal ? toLetterSlots(normalizeAnswer(reveal.revealedAnswer), entry.length, false)[index] : "";
     })
+    .find(Boolean);
+  if (revealed) return revealed;
+
+  return related
+    .map(({ entry, index }) => (feedback?.[entry.id]?.[index] === "correct" ? getEntryLetters(entry, progress)[index] : ""))
     .find(Boolean);
 }
 
-function toLetterSlots(value: string, length: number, preserveSlots: boolean) {
+export function toLetterSlots(value: string, length: number, preserveSlots: boolean) {
   const slots = Array<string>(length).fill("");
+  if (!preserveSlots) {
+    [...normalizeAnswer(value)].slice(0, length).forEach((letter, index) => {
+      slots[index] = letter;
+    });
+    return slots;
+  }
   const chars = [...value];
-  const hasSlotMarkers = preserveSlots && chars.some((char) => char === " ");
+  const hasSlotMarkers = chars.some((char) => char === " ");
   if (hasSlotMarkers || chars.length >= length) {
     chars.slice(0, length).forEach((char, index) => {
       slots[index] = normalizeAnswer(char)[0] ?? "";
@@ -136,6 +182,6 @@ function toLetterSlots(value: string, length: number, preserveSlots: boolean) {
   return slots;
 }
 
-function serializeLetterSlots(letters: string[]) {
+export function serializeLetterSlots(letters: string[]) {
   return letters.map((letter) => letter || " ").join("").replace(/\s+$/g, "");
 }

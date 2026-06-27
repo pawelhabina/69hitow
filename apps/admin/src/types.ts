@@ -19,6 +19,7 @@ export interface AdminEntry {
   type: EntryType;
   answer: string;
   normalizedAnswer: string;
+  promptText: string | null;
   clueText: string | null;
   audioPath: string | null;
   audioUrl: string | null;

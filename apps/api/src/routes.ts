@@ -205,6 +205,7 @@ routes.get(
       entries: crossword.entries.map((entry) => ({
         id: entry.id,
         type: entry.type,
+        promptText: entry.promptText,
         clueText: entry.clueText,
         audioUrl: publicAudioUrl(entry.audioPath),
         audioStartTime: entry.audioStartTime,
@@ -475,6 +476,7 @@ routes.post(
         type: input.type,
         answer: input.answer.trim(),
         normalizedAnswer,
+        promptText: input.promptText || null,
         clueText: input.clueText || null,
         audioPath,
         audioStartTime: input.audioStartTime ?? null,
@@ -529,6 +531,7 @@ routes.put(
         type: input.type,
         answer: input.answer.trim(),
         normalizedAnswer,
+        promptText: input.promptText || null,
         clueText: input.clueText || null,
         audioPath: newAudioPath,
         audioStartTime: input.audioStartTime ?? null,

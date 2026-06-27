@@ -47,6 +47,7 @@ model CrosswordEntry {
   type             EntryType
   answer           String
   normalizedAnswer String
+  promptText       String?
   clueText         String?   @db.Text
   audioPath        String?
   audioStartTime   Float?

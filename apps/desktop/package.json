@@ -1,6 +1,6 @@
 {
   "name": "@music-crossword/desktop",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "main": "out/main/main.js",
@@ -8,6 +8,7 @@
     "dev": "electron-vite dev",
     "build": "tsc -p tsconfig.json && electron-vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
     "preview": "electron-vite preview",
     "verify:production-bundle": "node scripts/verify-production-bundle.mjs",
@@ -44,7 +45,8 @@
     "postcss": "^8.5.4",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vitest": "^3.2.4"
   },
   "build": {
     "appId": "pl.hitow69.desktop",

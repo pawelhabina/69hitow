@@ -27,6 +27,11 @@ export function normalizeAnswer(value: string): string {
     .replace(/\s/g, "");
 }
 
+export function clampAudioTime(time: number, startTime: number, endTime: number | null | undefined, duration: number) {
+  const upperBound = Math.min(endTime ?? duration, duration);
+  return Math.min(upperBound, Math.max(startTime, time));
+}
+
 export const crosswordCreateSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(1000).optional().nullable(),
@@ -48,6 +53,7 @@ export const entryInputSchema = z
   .object({
     type: EntryTypeSchema,
     answer: z.string().trim().min(1).max(120),
+    promptText: z.string().trim().max(191).optional().nullable(),
     clueText: z.string().trim().max(1000).optional().nullable(),
     audioStartTime: optionalAudioTimeSchema,
     audioEndTime: optionalAudioTimeSchema,
@@ -109,6 +115,7 @@ export interface PublicCrosswordListItem {
 export interface PublicEntry {
   id: string;
   type: EntryType;
+  promptText: string | null;
   clueText: string | null;
   audioUrl: string | null;
   audioStartTime: number | null;

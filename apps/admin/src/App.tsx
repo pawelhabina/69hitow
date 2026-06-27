@@ -7,6 +7,7 @@ import {
   FileAudio,
   LayoutDashboard,
   ListMusic,
+  Lock,
   LogOut,
   Pause,
   Pencil,
@@ -16,6 +17,7 @@ import {
   Save,
   Trash2,
   UploadCloud,
+  Unlock,
   X
 } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -26,6 +28,7 @@ import {
   type Direction,
   type EntryInput,
   type EntryType,
+  clampAudioTime,
   entryTypeLabel,
   normalizeAnswer,
   validateCrosswordLayout,
@@ -42,6 +45,7 @@ type Tab = "DRAFT" | "PUBLISHED";
 const blankEntry: EntryFormState = {
   type: "TEXT_CLUE",
   answer: "",
+  promptText: "",
   clueText: "",
   audioStartTime: "",
   audioEndTime: "",
@@ -58,6 +62,7 @@ const blankEntry: EntryFormState = {
 interface EntryFormState {
   type: EntryType;
   answer: string;
+  promptText: string;
   clueText: string;
   audioStartTime: string;
   audioEndTime: string;
@@ -387,6 +392,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
       const data = new FormData();
       data.set("type", entry.type);
       data.set("answer", entry.answer);
+      data.set("promptText", entry.promptText ?? "");
       data.set("clueText", entry.clueText ?? "");
       data.set("audioStartTime", entry.audioStartTime === null ? "" : String(entry.audioStartTime));
       data.set("audioEndTime", entry.audioEndTime === null ? "" : String(entry.audioEndTime));
@@ -454,6 +460,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
     setEditForm({
       type: entry.type,
       answer: entry.answer,
+      promptText: entry.promptText ?? "",
       clueText: entry.clueText ?? "",
       audioStartTime: formatTimeInput(entry.audioStartTime),
       audioEndTime: formatTimeInput(entry.audioEndTime),
@@ -570,7 +577,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
               entryMutation.mutate({ entryForm: newForm, entryAudio: newAudio });
             }}
           >
-            <Field label="Typ hasla">
+            <Field label="Rodzaj zawartosci">
               <Select value={newForm.type} onChange={(event) => setNewForm({ ...newForm, type: event.target.value as EntryType })}>
                 {ENTRY_TYPES.map((type) => (
                   <option key={type} value={type}>
@@ -578,6 +585,14 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
                   </option>
                 ))}
               </Select>
+            </Field>
+            <Field label="Naglowek zagadki" hint={`Domyslnie: ${entryTypeLabel(newForm.type)}`}>
+              <Input
+                value={newForm.promptText}
+                maxLength={191}
+                placeholder="Np. Z jakiego utworu pochodzi ten fragment?"
+                onChange={(event) => setNewForm({ ...newForm, promptText: event.target.value })}
+              />
             </Field>
             <Field label="Odpowiedz" hint={`Normalizacja: ${normalizeAnswer(newForm.answer) || "-"}`}>
               <Input value={newForm.answer} onChange={(event) => setNewForm({ ...newForm, answer: event.target.value })} />
@@ -604,6 +619,14 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
                 />
               </Field>
             </div>
+            <AudioSegmentPreview
+              audioUrl={null}
+              file={newAudio}
+              startValue={newForm.audioStartTime}
+              endValue={newForm.audioEndTime}
+              onStartChange={(value) => setNewForm((current) => ({ ...current, audioStartTime: value }))}
+              onEndChange={(value) => setNewForm((current) => ({ ...current, audioEndTime: value }))}
+            />
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Tytul utworu">
@@ -691,7 +714,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
                   ) : null}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {entry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} · {entryTypeLabel(entry.type)}
+                  {entry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} · {entry.promptText || entryTypeLabel(entry.type)}
                 </p>
                 <Button type="button" className="mt-3 h-8 w-full bg-white/[0.06] text-xs text-slate-200" onClick={() => startEditing(entry)}>
                   <Pencil className="h-3.5 w-3.5" /> Edytuj
@@ -782,7 +805,7 @@ function EntryEditModal({
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan">Edycja odpowiedzi</p>
             <h3 className="mt-1 text-2xl font-bold">{entry.orderNumber}. {entry.answer}</h3>
             <p className="mt-1 text-sm text-slate-400">
-              {entry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} · {entryTypeLabel(entry.type)}
+              {entry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} · {entry.promptText || entryTypeLabel(entry.type)}
             </p>
           </div>
           <Button type="button" className="h-9 w-9 bg-white/[0.06] px-0 text-slate-200" onClick={onClose} aria-label="Zamknij modal">
@@ -793,7 +816,7 @@ function EntryEditModal({
         <div className="grid grid-cols-[1.1fr_0.9fr] gap-5">
           <div className="grid gap-3">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Typ hasla">
+              <Field label="Rodzaj zawartosci">
                 <Select value={form.type} onChange={(event) => onChange({ ...form, type: event.target.value as EntryType })}>
                   {ENTRY_TYPES.map((type) => (
                     <option key={type} value={type}>
@@ -806,6 +829,15 @@ function EntryEditModal({
                 <Input type="number" min={1} value={form.orderNumber} onChange={(event) => onChange({ ...form, orderNumber: Number(event.target.value) })} />
               </Field>
             </div>
+
+            <Field label="Naglowek zagadki" hint={`Domyslnie: ${entryTypeLabel(form.type)}`}>
+              <Input
+                value={form.promptText}
+                maxLength={191}
+                placeholder="Np. Z jakiego utworu pochodzi ten fragment?"
+                onChange={(event) => onChange({ ...form, promptText: event.target.value })}
+              />
+            </Field>
 
             <Field label="Odpowiedz" hint={`Normalizacja: ${normalizeAnswer(form.answer) || "-"}`}>
               <Input value={form.answer} onChange={(event) => onChange({ ...form, answer: event.target.value })} />
@@ -943,6 +975,7 @@ function AudioSegmentPreview({
   const frameRef = useRef<number | null>(null);
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [rangeLocked, setRangeLocked] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const source = fileUrl ?? (audioUrl ? withToken(audioUrl) : null);
@@ -982,7 +1015,11 @@ function AudioSegmentPreview({
     const update = () => {
       const audio = audioRef.current;
       if (!audio) return;
-      if (safeEnd !== null && audio.currentTime >= safeEnd) {
+      if (rangeLocked && audio.currentTime < safeStart) {
+        audio.currentTime = safeStart;
+        setCurrentTime(safeStart);
+      }
+      if (rangeLocked && safeEnd !== null && audio.currentTime >= safeEnd) {
         audio.pause();
         audio.currentTime = safeEnd;
         setCurrentTime(safeEnd);
@@ -996,7 +1033,7 @@ function AudioSegmentPreview({
 
     frameRef.current = window.requestAnimationFrame(update);
     return stopFrame;
-  }, [isPlaying, safeEnd]);
+  }, [isPlaying, rangeLocked, safeEnd, safeStart]);
 
   useEffect(() => {
     setIsPlaying(false);
@@ -1016,7 +1053,7 @@ function AudioSegmentPreview({
       setIsPlaying(false);
       return;
     }
-    const shouldResetToStart = audio.currentTime < safeStart || (safeEnd !== null && audio.currentTime >= safeEnd);
+    const shouldResetToStart = rangeLocked && (audio.currentTime < safeStart || (safeEnd !== null && audio.currentTime >= safeEnd));
     if (shouldResetToStart) audio.currentTime = safeStart;
     await audio.play();
     setIsPlaying(true);
@@ -1025,8 +1062,20 @@ function AudioSegmentPreview({
   const seek = (value: number) => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.currentTime = value;
-    setCurrentTime(value);
+    const nextValue = rangeLocked ? clampAudioTime(value, safeStart, safeEnd, duration) : value;
+    audio.currentTime = nextValue;
+    setCurrentTime(nextValue);
+  };
+
+  const toggleRangeLock = () => {
+    const nextLocked = !rangeLocked;
+    setRangeLocked(nextLocked);
+    if (!nextLocked) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    const nextTime = clampAudioTime(audio.currentTime, safeStart, safeEnd, duration);
+    audio.currentTime = nextTime;
+    setCurrentTime(nextTime);
   };
 
   return (
@@ -1057,10 +1106,14 @@ function AudioSegmentPreview({
         </div>
         <input
           type="range"
-          min={0}
-          max={duration || 0}
+          min={rangeLocked ? safeStart : 0}
+          max={rangeLocked ? safeEnd ?? duration : duration || 0}
           step={0.001}
-          value={Math.min(currentTime, duration || currentTime)}
+          value={
+            rangeLocked
+              ? Math.min(safeEnd ?? duration, Math.max(safeStart, currentTime))
+              : Math.min(currentTime, duration || currentTime)
+          }
           disabled={!source || !duration}
           onChange={(event) => seek(Number(event.target.value))}
           className="h-2 w-full cursor-pointer accent-cyan disabled:cursor-not-allowed disabled:opacity-40"
@@ -1074,6 +1127,10 @@ function AudioSegmentPreview({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button type="button" className="h-9 bg-white/[0.06] px-3 text-xs text-slate-200" disabled={!source || !duration} onClick={toggleRangeLock}>
+            {rangeLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+            {rangeLocked ? "Odblokuj zakres" : "Zablokuj zakres"}
+          </Button>
           <Button type="button" className="h-9 bg-white/[0.06] px-3 text-xs text-slate-200" disabled={!source || !duration} onClick={() => onStartChange(formatTimeInput(currentTime))}>
             Ustaw start
           </Button>

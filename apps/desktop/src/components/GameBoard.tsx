@@ -44,7 +44,10 @@ export function GameBoard({ crossword, activeEntryId, progress, feedback, cellLe
   });
 
   return (
-    <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${crossword.gridColumns}, minmax(0, 1fr))` }}>
+    <div
+      className="grid w-full gap-1.5"
+      style={{ gridTemplateColumns: `repeat(${crossword.gridColumns}, minmax(0, 1fr))` }}
+    >
       {Array.from({ length: crossword.gridRows * crossword.gridColumns }).map((_, index) => {
         const row = Math.floor(index / crossword.gridColumns);
         const column = index % crossword.gridColumns;
@@ -71,12 +74,12 @@ export function GameBoard({ crossword, activeEntryId, progress, feedback, cellLe
               onSelect(selected.entry, selected.index, selected.entry.direction);
             }}
             className={cn(
-              "relative aspect-square rounded-[6px] border text-center text-sm font-black transition",
+              "relative aspect-square min-h-0 min-w-0 w-full overflow-hidden rounded-[6px] border p-0 text-center text-sm font-black leading-none transition",
               cell
                 ? "border-white/15 bg-slate-900/80 text-white hover:border-cyan/60"
                 : "border-white/[0.03] bg-black/45 text-transparent",
-              active && "border-cyan/70 bg-gradient-to-br from-cyan/35 to-violet/20 shadow-glow",
-              activeCell && "ring-2 ring-cyan ring-offset-2 ring-offset-slate-950",
+              active && status !== "correct" && !solved && "border-cyan bg-cyan/40 shadow-[inset_0_0_0_1px_rgba(103,232,249,0.8),0_0_12px_rgba(34,211,238,0.3)]",
+              activeCell && "z-10 ring-[3px] ring-white ring-offset-1 ring-offset-cyan/70",
               status === "correct" && "border-emerald-300/70 bg-emerald-500/25 text-emerald-50",
               (status === "incorrect" || status === "missing") && "border-red-300/70 bg-red-500/25 text-red-50",
               solved && "border-emerald-300/50 bg-emerald-500/18 text-emerald-50",
@@ -89,7 +92,6 @@ export function GameBoard({ crossword, activeEntryId, progress, feedback, cellLe
                 {cell.entries.find(({ entry }) => entry.startRow === row && entry.startColumn === column)?.entry.orderNumber}
               </span>
             ) : null}
-            {cell && cell.entries.length > 1 ? <span className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full bg-cyan" /> : null}
           </button>
         );
       })}

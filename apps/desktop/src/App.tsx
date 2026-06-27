@@ -38,13 +38,15 @@ import {
   buildEntryCellMap,
   clearCrossingCell,
   getEntryLetters,
+  getLockedCellLetter,
+  synchronizeCrossingGuesses,
   writeCrossingCell
 } from "@/lib/crosswordInput";
 import { cn } from "@/lib/utils";
 import { useProgressStore } from "@/store/progress";
 
 const EMPTY_GAME_PROGRESS = { solvedEntries: {}, givenUpEntries: {}, guesses: {}, completed: false };
-const APP_VERSION = "0.2.5";
+const APP_VERSION = "0.3.0";
 
 function isNewerVersion(latest: string, current: string) {
   const latestParts = latest.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -264,50 +266,72 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
   const entryCellsByKey = useMemo(() => buildEntryCellMap(entries), [entries]);
   const cellLetters = useMemo(() => buildCellLetters(entries, progress), [entries, progress]);
 
-  const clearFeedbackForEntries = useCallback((entryIds: string[]) => {
+  const clearFeedbackAtCell = useCallback((entry: PublicEntry, index: number) => {
+    const row = entry.startRow + (entry.direction === "DOWN" ? index : 0);
+    const column = entry.startColumn + (entry.direction === "ACROSS" ? index : 0);
+    const related = entryCellsByKey.get(`${row}:${column}`) ?? [];
     setFeedback((currentFeedback) => {
       const nextFeedback = { ...currentFeedback };
-      entryIds.forEach((entryId) => {
-        delete nextFeedback[entryId];
+      related.forEach(({ entry: relatedEntry, index: relatedIndex }) => {
+        const statuses = nextFeedback[relatedEntry.id];
+        if (!statuses) return;
+        const nextStatuses = [...statuses];
+        delete nextStatuses[relatedIndex];
+        nextFeedback[relatedEntry.id] = nextStatuses;
       });
       return nextFeedback;
     });
-  }, []);
+  }, [entryCellsByKey]);
+
+  const getLatestProgress = useCallback(
+    () => useProgressStore.getState().progress[crosswordId] ?? EMPTY_GAME_PROGRESS,
+    [crosswordId]
+  );
 
   const writeLetterAtCell = useCallback(
     (entry: PublicEntry, index: number, letter: string) => {
-      const result = writeCrossingCell({ entry, index, letter, progress, entryCellsByKey });
-      if (result.blocked) {
-        toast.error(`Ta kratka jest juz ustalona jako ${result.lockedLetter}.`);
-        return false;
-      }
-      clearFeedbackForEntries(result.affectedEntryIds);
+      const latestProgress = getLatestProgress();
+      const result = writeCrossingCell({ entry, index, letter, progress: latestProgress, entryCellsByKey, feedback });
+      if (result.blocked) return false;
+      if ("unchanged" in result && result.unchanged) return true;
+      clearFeedbackAtCell(entry, index);
       setGuesses(crosswordId, result.guesses);
       return true;
     },
-    [clearFeedbackForEntries, crosswordId, entryCellsByKey, progress, setGuesses]
+    [clearFeedbackAtCell, crosswordId, entryCellsByKey, feedback, getLatestProgress, setGuesses]
   );
 
   const clearLetterAtCell = useCallback(
     (entry: PublicEntry, index: number) => {
-      const result = clearCrossingCell({ entry, index, progress, entryCellsByKey });
+      const latestProgress = getLatestProgress();
+      const result = clearCrossingCell({ entry, index, progress: latestProgress, entryCellsByKey, feedback });
       if (result.blocked) {
         toast.info(`Ta kratka jest juz ustalona jako ${result.lockedLetter}.`);
         return false;
       }
-      clearFeedbackForEntries(result.affectedEntryIds);
+      clearFeedbackAtCell(entry, index);
       setGuesses(crosswordId, result.guesses);
       return true;
     },
-    [clearFeedbackForEntries, crosswordId, entryCellsByKey, progress, setGuesses]
+    [clearFeedbackAtCell, crosswordId, entryCellsByKey, feedback, getLatestProgress, setGuesses]
+  );
+
+  const isCellLocked = useCallback(
+    (entry: PublicEntry, index: number) =>
+      Boolean(getLockedCellLetter({ entry, index, progress: getLatestProgress(), entryCellsByKey, feedback })),
+    [entryCellsByKey, feedback, getLatestProgress]
   );
 
   const checkBoardMutation = useMutation({
-    mutationFn: () =>
-      apiRequest<BoardCheckResult>(`/api/crosswords/${crosswordId}/check-board`, {
+    mutationFn: () => {
+      const latestProgress = getLatestProgress();
+      const guesses = synchronizeCrossingGuesses(entries, latestProgress);
+      setGuesses(crosswordId, guesses);
+      return apiRequest<BoardCheckResult>(`/api/crosswords/${crosswordId}/check-board`, {
         method: "POST",
-        body: JSON.stringify({ guesses: progress.guesses })
-      }),
+        body: JSON.stringify({ guesses })
+      });
+    },
     onSuccess: (result) => {
       setFeedback(Object.fromEntries(result.entries.map((entry) => [entry.id, entry.letters])));
       result.entries.forEach((entry) => {
@@ -405,10 +429,15 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
 
       if (event.key === "Backspace") {
         event.preventDefault();
-        const letters = getEntryLetters(activeEntry, progress);
-        const removeIndex = letters[activeCellIndex] || activeCellIndex === 0 ? activeCellIndex : activeCellIndex - 1;
-        clearLetterAtCell(activeEntry, removeIndex);
-        setActiveCellIndex(removeIndex);
+        const latestProgress = getLatestProgress();
+        const letters = getEntryLetters(activeEntry, latestProgress);
+        let removeIndex = activeCellIndex;
+        if (!letters[removeIndex] || isCellLocked(activeEntry, removeIndex)) removeIndex -= 1;
+        while (removeIndex >= 0 && isCellLocked(activeEntry, removeIndex)) removeIndex -= 1;
+        if (removeIndex >= 0) {
+          clearLetterAtCell(activeEntry, removeIndex);
+          setActiveCellIndex(removeIndex);
+        }
         return;
       }
 
@@ -441,6 +470,8 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
     checkBoardMutation,
     clearLetterAtCell,
     currentReveal,
+    getLatestProgress,
+    isCellLocked,
     progress,
     showCompletionOverlay,
     writeLetterAtCell
@@ -536,7 +567,7 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
               <div className="grid gap-4">
                 <div>
                   <Badge>{activeEntry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} {activeEntry.orderNumber}</Badge>
-                  <h2 className="mt-3 text-2xl font-bold">{entryTypeLabel(activeEntry.type)}</h2>
+                  <h2 className="mt-3 text-2xl font-bold">{activeEntry.promptText || entryTypeLabel(activeEntry.type)}</h2>
                 </div>
 
                 {activeEntry.clueText ? <p className="rounded-lg border border-white/10 bg-white/[0.05] p-4 text-slate-200">{activeEntry.clueText}</p> : null}
@@ -613,13 +644,13 @@ function EntryList({
               key={entry.id}
               className={cn(
                 "rounded-md border border-white/10 bg-white/[0.04] p-3 text-left text-sm transition hover:border-cyan/50",
-                activeId === entry.id && "border-cyan/60 bg-cyan/10",
+                activeId === entry.id && "border-cyan bg-cyan/20 shadow-[inset_3px_0_0_#22d3ee]",
                 solved && "border-emerald-300/40 bg-emerald-500/10",
                 givenUp && !solved && "border-slate-300/30 bg-slate-500/10"
               )}
             >
               <button type="button" onClick={() => onSelect(entry)} className="flex w-full items-center justify-between gap-3 text-left">
-                <span className="font-semibold">{entry.orderNumber}. {entryTypeLabel(entry.type)}</span>
+                <span className="font-semibold">{entry.orderNumber}. {entry.promptText || entryTypeLabel(entry.type)}</span>
                 <span className="shrink-0 text-xs text-slate-500">{entry.length} liter</span>
               </button>
               {reveal ? (
