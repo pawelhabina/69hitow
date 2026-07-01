@@ -9,6 +9,7 @@ export const ENTRY_TYPES = [
 
 export const DIRECTIONS = ["ACROSS", "DOWN"] as const;
 export const CROSSWORD_STATUSES = ["DRAFT", "PUBLISHED"] as const;
+export const DEFAULT_ENTRY_PROMPT = "Zgadnij tytuł";
 
 export type EntryType = (typeof ENTRY_TYPES)[number];
 export type Direction = (typeof DIRECTIONS)[number];

@@ -24,12 +24,10 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import {
   DIRECTIONS,
-  ENTRY_TYPES,
+  DEFAULT_ENTRY_PROMPT,
   type Direction,
-  type EntryInput,
   type EntryType,
   clampAudioTime,
-  entryTypeLabel,
   normalizeAnswer,
   validateCrosswordLayout,
   validateEntryPlacement
@@ -43,9 +41,9 @@ import type { AdminCrossword, AdminEntry, AdminListCrossword } from "@/types";
 type Tab = "DRAFT" | "PUBLISHED";
 
 const blankEntry: EntryFormState = {
-  type: "TEXT_CLUE",
+  type: "GUESS_TITLE_FROM_AUDIO",
   answer: "",
-  promptText: "",
+  promptText: DEFAULT_ENTRY_PROMPT,
   clueText: "",
   audioStartTime: "",
   audioEndTime: "",
@@ -81,6 +79,13 @@ interface EntryValidation {
   blockingErrors: string[];
   saveBlockingErrors: string[];
   allErrors: string[];
+}
+
+function effectiveEntryType(entryForm: EntryFormState, entryAudio: File | null, entry?: AdminEntry | null): EntryType {
+  if (entry) return entry.type;
+  if (entryAudio) return "GUESS_TITLE_FROM_AUDIO";
+  if (entryForm.clueText.trim()) return "TEXT_CLUE";
+  return "GUESS_TITLE_FROM_AUDIO";
 }
 
 export function App() {
@@ -289,6 +294,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
 
   const getEntryValidation = (entryForm: EntryFormState, entryAudio: File | null, entry?: AdminEntry | null): EntryValidation => {
     if (!crossword) return { placementErrors: [], blockingErrors: [], saveBlockingErrors: [], allErrors: [] };
+    const entryType = effectiveEntryType(entryForm, entryAudio, entry);
     const placementErrors = validateEntryPlacement(
       entryForm,
       crossword.entries.map((entry) => ({
@@ -306,10 +312,10 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
     if (!normalizeAnswer(entryForm.answer)) {
       blockingErrors.push("Znormalizowana odpowiedz jest pusta.");
     }
-    if ((entryForm.type === "TEXT_CLUE" || entryForm.type === "COMPLETE_LYRIC") && !entryForm.clueText.trim()) {
+    if ((entryType === "TEXT_CLUE" || entryType === "COMPLETE_LYRIC") && !entryForm.clueText.trim()) {
       blockingErrors.push("Ten typ wymaga tekstu podpowiedzi.");
     }
-    if ((entryForm.type === "GUESS_TITLE_FROM_AUDIO" || entryForm.type === "GUESS_ARTIST_FROM_AUDIO") && !entryAudio && !entry?.audioPath) {
+    if ((entryType === "GUESS_TITLE_FROM_AUDIO" || entryType === "GUESS_ARTIST_FROM_AUDIO") && !entryAudio && !entry?.audioPath) {
       blockingErrors.push("Ten typ wymaga pliku MP3.");
     }
     const audioStartTime = parseTimeInput(entryForm.audioStartTime);
@@ -359,6 +365,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
         if (key === "audioStartTime" || key === "audioEndTime") return;
         data.set(key, String(value ?? ""));
       });
+      data.set("type", effectiveEntryType(entryForm, entryAudio, entry));
       const audioStartTime = parseTimeInput(entryForm.audioStartTime);
       const audioEndTime = parseTimeInput(entryForm.audioEndTime);
       data.set("audioStartTime", audioStartTime === null || Number.isNaN(audioStartTime) ? "" : String(audioStartTime));
@@ -460,7 +467,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
     setEditForm({
       type: entry.type,
       answer: entry.answer,
-      promptText: entry.promptText ?? "",
+      promptText: entry.promptText ?? DEFAULT_ENTRY_PROMPT,
       clueText: entry.clueText ?? "",
       audioStartTime: formatTimeInput(entry.audioStartTime),
       audioEndTime: formatTimeInput(entry.audioEndTime),
@@ -577,20 +584,11 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
               entryMutation.mutate({ entryForm: newForm, entryAudio: newAudio });
             }}
           >
-            <Field label="Rodzaj zawartosci">
-              <Select value={newForm.type} onChange={(event) => setNewForm({ ...newForm, type: event.target.value as EntryType })}>
-                {ENTRY_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {entryTypeLabel(type)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Naglowek zagadki" hint={`Domyslnie: ${entryTypeLabel(newForm.type)}`}>
+            <Field label="Tekst zagadki">
               <Input
                 value={newForm.promptText}
                 maxLength={191}
-                placeholder="Np. Z jakiego utworu pochodzi ten fragment?"
+                placeholder={DEFAULT_ENTRY_PROMPT}
                 onChange={(event) => setNewForm({ ...newForm, promptText: event.target.value })}
               />
             </Field>
@@ -714,7 +712,7 @@ function Editor({ crosswordId, onDeleted }: { crosswordId: string; onDeleted: ()
                   ) : null}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {entry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} · {entry.promptText || entryTypeLabel(entry.type)}
+                  {entry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} · {entry.promptText || DEFAULT_ENTRY_PROMPT}
                 </p>
                 <Button type="button" className="mt-3 h-8 w-full bg-white/[0.06] text-xs text-slate-200" onClick={() => startEditing(entry)}>
                   <Pencil className="h-3.5 w-3.5" /> Edytuj
@@ -805,7 +803,7 @@ function EntryEditModal({
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan">Edycja odpowiedzi</p>
             <h3 className="mt-1 text-2xl font-bold">{entry.orderNumber}. {entry.answer}</h3>
             <p className="mt-1 text-sm text-slate-400">
-              {entry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} · {entry.promptText || entryTypeLabel(entry.type)}
+              {entry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} · {entry.promptText || DEFAULT_ENTRY_PROMPT}
             </p>
           </div>
           <Button type="button" className="h-9 w-9 bg-white/[0.06] px-0 text-slate-200" onClick={onClose} aria-label="Zamknij modal">
@@ -815,26 +813,15 @@ function EntryEditModal({
 
         <div className="grid grid-cols-[1.1fr_0.9fr] gap-5">
           <div className="grid gap-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Rodzaj zawartosci">
-                <Select value={form.type} onChange={(event) => onChange({ ...form, type: event.target.value as EntryType })}>
-                  {ENTRY_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {entryTypeLabel(type)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Numer">
-                <Input type="number" min={1} value={form.orderNumber} onChange={(event) => onChange({ ...form, orderNumber: Number(event.target.value) })} />
-              </Field>
-            </div>
+            <Field label="Numer">
+              <Input type="number" min={1} value={form.orderNumber} onChange={(event) => onChange({ ...form, orderNumber: Number(event.target.value) })} />
+            </Field>
 
-            <Field label="Naglowek zagadki" hint={`Domyslnie: ${entryTypeLabel(form.type)}`}>
+            <Field label="Tekst zagadki">
               <Input
                 value={form.promptText}
                 maxLength={191}
-                placeholder="Np. Z jakiego utworu pochodzi ten fragment?"
+                placeholder={DEFAULT_ENTRY_PROMPT}
                 onChange={(event) => onChange({ ...form, promptText: event.target.value })}
               />
             </Field>

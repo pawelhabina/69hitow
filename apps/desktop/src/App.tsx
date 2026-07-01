@@ -26,7 +26,7 @@ import {
   type CrosswordGiveUpResult,
   type GameResultSummary,
   type LetterCheckStatus,
-  entryTypeLabel,
+  DEFAULT_ENTRY_PROMPT,
   normalizeAnswer
 } from "@music-crossword/shared";
 import { AudioPlayer } from "@/components/AudioPlayer";
@@ -46,7 +46,7 @@ import { cn } from "@/lib/utils";
 import { useProgressStore } from "@/store/progress";
 
 const EMPTY_GAME_PROGRESS = { solvedEntries: {}, givenUpEntries: {}, guesses: {}, completed: false };
-const APP_VERSION = "0.3.0";
+const APP_VERSION = "0.4.0";
 
 function isNewerVersion(latest: string, current: string) {
   const latestParts = latest.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -567,7 +567,7 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
               <div className="grid gap-4">
                 <div>
                   <Badge>{activeEntry.direction === "ACROSS" ? "Poziomo" : "Pionowo"} {activeEntry.orderNumber}</Badge>
-                  <h2 className="mt-3 text-2xl font-bold">{activeEntry.promptText || entryTypeLabel(activeEntry.type)}</h2>
+                  <h2 className="mt-3 text-2xl font-bold">{activeEntry.promptText || DEFAULT_ENTRY_PROMPT}</h2>
                 </div>
 
                 {activeEntry.clueText ? <p className="rounded-lg border border-white/10 bg-white/[0.05] p-4 text-slate-200">{activeEntry.clueText}</p> : null}
@@ -650,7 +650,7 @@ function EntryList({
               )}
             >
               <button type="button" onClick={() => onSelect(entry)} className="flex w-full items-center justify-between gap-3 text-left">
-                <span className="font-semibold">{entry.orderNumber}. {entry.promptText || entryTypeLabel(entry.type)}</span>
+                <span className="font-semibold">{entry.orderNumber}. {entry.promptText || DEFAULT_ENTRY_PROMPT}</span>
                 <span className="shrink-0 text-xs text-slate-500">{entry.length} liter</span>
               </button>
               {reveal ? (
