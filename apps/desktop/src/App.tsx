@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   Download,
@@ -12,6 +13,7 @@ import {
   Loader2,
   Music2,
   RefreshCw,
+  RotateCcw,
   Trophy,
   XCircle
 } from "lucide-react";
@@ -46,7 +48,7 @@ import { cn } from "@/lib/utils";
 import { useProgressStore } from "@/store/progress";
 
 const EMPTY_GAME_PROGRESS = { solvedEntries: {}, givenUpEntries: {}, guesses: {}, completed: false };
-const APP_VERSION = "0.4.2";
+const APP_VERSION = "0.4.3";
 
 function isNewerVersion(latest: string, current: string) {
   const latestParts = latest.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -248,6 +250,7 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
   const [feedback, setFeedback] = useState<Record<string, LetterCheckStatus[]>>({});
   const [justCompleted, setJustCompleted] = useState(false);
   const [hideSolvedEntries, setHideSolvedEntries] = useState(false);
+  const [resetConfirmationOpen, setResetConfirmationOpen] = useState(false);
   const submittedResultRef = useRef(false);
 
   useEffect(() => {
@@ -494,6 +497,7 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
     setFeedback({});
     setJustCompleted(false);
     setCompletionDismissed(false);
+    setResetConfirmationOpen(false);
     setActiveId(crossword.entries[0]?.id ?? null);
     setActiveCellIndex(0);
     toast.info("Krzyzowka zresetowana lokalnie.");
@@ -518,7 +522,7 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
             <div className="h-full bg-gradient-to-r from-cyan to-violet" style={{ width: `${completedView ? 100 : (completedCount / crossword.entries.length) * 100}%` }} />
           </div>
           <Button
-            onClick={resetCurrentCrossword}
+            onClick={() => setResetConfirmationOpen(true)}
             className="border-red-400/25 bg-red-500/10 text-red-100 hover:bg-red-500/20"
           >
             Resetuj
@@ -600,7 +604,7 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
                 <Button onClick={() => setCompletionDismissed(true)} className="w-full">
                   Pokaz krzyzowke
                 </Button>
-                <Button onClick={resetCurrentCrossword} className="w-full border-red-400/25 bg-red-500/10 text-red-100 hover:bg-red-500/20">
+                <Button onClick={() => setResetConfirmationOpen(true)} className="w-full border-red-400/25 bg-red-500/10 text-red-100 hover:bg-red-500/20">
                   Resetuj
                 </Button>
                 <Button onClick={onBack} className="w-full border-slate-400/20 bg-white/[0.06] text-slate-200">
@@ -611,7 +615,69 @@ function Game({ crosswordId, onBack }: { crosswordId: string; onBack: () => void
           </motion.div>
         ) : null}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {resetConfirmationOpen ? (
+          <ResetConfirmationModal
+            onCancel={() => setResetConfirmationOpen(false)}
+            onConfirm={resetCurrentCrossword}
+          />
+        ) : null}
+      </AnimatePresence>
     </main>
+  );
+}
+
+function ResetConfirmationModal({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onCancel]);
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-6 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={onCancel}
+      role="presentation"
+    >
+      <motion.div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="reset-dialog-title"
+        aria-describedby="reset-dialog-description"
+        initial={{ scale: 0.95, y: 16 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.97, y: 8, opacity: 0 }}
+        onMouseDown={(event) => event.stopPropagation()}
+        className="glass w-full max-w-md rounded-lg border-red-400/25 p-6 shadow-2xl"
+      >
+        <div className="flex gap-4">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-red-400/25 bg-red-500/10">
+            <AlertTriangle className="h-5 w-5 text-red-300" />
+          </div>
+          <div>
+            <h2 id="reset-dialog-title" className="text-xl font-bold text-white">Zresetowac krzyzowke?</h2>
+            <p id="reset-dialog-description" className="mt-2 text-sm leading-6 text-slate-300">
+              Wszystkie wpisane litery, poprawne odpowiedzi i lokalne statystyki tej planszy zostana usuniete. Tej operacji nie mozna cofnac.
+            </p>
+          </div>
+        </div>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button autoFocus onClick={onCancel} className="border-white/10 bg-white/[0.06] text-slate-100 hover:bg-white/10">
+            Anuluj
+          </Button>
+          <Button onClick={onConfirm} className="border-red-400/30 bg-red-500/20 text-red-50 hover:bg-red-500/30">
+            <RotateCcw className="h-4 w-4" /> Resetuj krzyzowke
+          </Button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
