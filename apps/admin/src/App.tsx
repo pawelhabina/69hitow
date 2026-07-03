@@ -18,6 +18,8 @@ import {
   Trash2,
   UploadCloud,
   Unlock,
+  Volume2,
+  VolumeX,
   X
 } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -29,6 +31,7 @@ import {
   type EntryType,
   clampAudioTime,
   normalizeAnswer,
+  parseStoredVolume,
   validateCrosswordLayout,
   validateEntryPlacement
 } from "@music-crossword/shared";
@@ -963,6 +966,7 @@ function AudioSegmentPreview({
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [rangeLocked, setRangeLocked] = useState(true);
+  const [volume, setVolume] = useState(() => parseStoredVolume(window.localStorage.getItem("69hitow-player-volume")));
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const source = fileUrl ?? (audioUrl ? withToken(audioUrl) : null);
@@ -1021,6 +1025,11 @@ function AudioSegmentPreview({
     frameRef.current = window.requestAnimationFrame(update);
     return stopFrame;
   }, [isPlaying, rangeLocked, safeEnd, safeStart]);
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+    window.localStorage.setItem("69hitow-player-volume", String(volume));
+  }, [volume]);
 
   useEffect(() => {
     setIsPlaying(false);
@@ -1106,6 +1115,20 @@ function AudioSegmentPreview({
           className="h-2 w-full cursor-pointer accent-cyan disabled:cursor-not-allowed disabled:opacity-40"
         />
       </div>
+      <label className="flex items-center gap-2 text-xs text-slate-300">
+        {volume === 0 ? <VolumeX className="h-4 w-4 text-slate-500" /> : <Volume2 className="h-4 w-4 text-cyan" />}
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={volume}
+          aria-label="Głośność"
+          onChange={(event) => setVolume(Number(event.target.value))}
+          className="h-2 min-w-0 flex-1 cursor-pointer accent-cyan"
+        />
+        <span className="w-9 text-right font-mono text-slate-400">{Math.round(volume * 100)}%</span>
+      </label>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-xs text-slate-400">
           <p>Podglad odcinka</p>

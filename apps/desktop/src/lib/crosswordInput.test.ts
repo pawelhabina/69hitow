@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampAudioTime, type PublicEntry, type RevealedEntry } from "@music-crossword/shared";
+import { clampAudioTime, parseStoredVolume, type PublicEntry, type RevealedEntry } from "@music-crossword/shared";
 import {
   type BoardFeedback,
   buildCellLetters,
@@ -38,6 +38,13 @@ const down: PublicEntry = {
 const emptyProgress = { solvedEntries: {}, givenUpEntries: {}, guesses: {} };
 
 describe("crossword input", () => {
+  it("uses a safe default volume and restores valid stored values", () => {
+    expect(parseStoredVolume(null)).toBe(0.8);
+    expect(parseStoredVolume("")).toBe(0.8);
+    expect(parseStoredVolume("0.37")).toBe(0.37);
+    expect(parseStoredVolume("2")).toBe(0.8);
+  });
+
   it("keeps playback inside the configured audio segment", () => {
     expect(clampAudioTime(12, 45.25, 62.75, 180)).toBe(45.25);
     expect(clampAudioTime(50, 45.25, 62.75, 180)).toBe(50);

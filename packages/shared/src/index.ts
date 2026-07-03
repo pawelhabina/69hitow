@@ -33,6 +33,12 @@ export function clampAudioTime(time: number, startTime: number, endTime: number 
   return Math.min(upperBound, Math.max(startTime, time));
 }
 
+export function parseStoredVolume(value: string | null, fallback = 0.8) {
+  if (value === null || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : fallback;
+}
+
 export const crosswordCreateSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(1000).optional().nullable(),
